@@ -188,22 +188,43 @@ h1::before { width: 3px; height: 13px; border-radius: 1px; box-shadow: none; }
 #mtype button { padding: 0 4px; font-size: 11px; }
 .tabs button { padding: 0 8px; }
 
-/* Text: editable captions */
-.srcpane { margin-top: 7px; }
-.dropzone.slim { height: 54px; cursor: pointer; text-align: center; }
-.dropzone.slim.has b { color: var(--accent); }
-.seg.small { width: 210px; }
-.outpane { margin-top: 7px; }
-.outpane select { flex: 1; min-width: 0; }
-.clines { overflow-y: auto; min-height: 90px; }
-.cline { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center; padding: 3px 9px; border-top: 1px solid var(--row-line); }
+/* Text: auto captions */
+.tauto { display: flex; flex-direction: column; gap: 7px; }
+button.big { height: 36px; font-size: 13px; font-weight: 650; }
+.autoopts { flex-wrap: nowrap; gap: 6px; }
+.autoopts .seg { flex: 1; min-width: 0; }
+.autoopts select, .stylerow select { height: 24px; min-width: 0; background: var(--bg-sunk); border: 1px solid var(--line); border-radius: 4px; color: var(--text); font: inherit; padding: 0 6px; }
+.autoopts select { width: 92px; flex: none; }
+.others { gap: 6px; font-size: 11px; }
+.tmain { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; min-height: 0; }
+.pvcol { display: flex; flex-direction: column; gap: 5px; }
+#tpv { width: 150px; height: auto; border-radius: 6px; border: 1px solid var(--line-soft); background: #0b0c0e; display: block; }
+.props.slim { grid-template-columns: 50px minmax(0, 1fr); gap: 4px 6px; }
+.props.slim .val { width: 32px; }
+.linecol { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.clines { flex: 1; overflow-y: auto; min-height: 160px; }
+.cline { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 6px; align-items: center; padding: 2px 6px; border-top: 1px solid var(--row-line); }
 .cline:first-child { border-top: 0; }
+.cline.on { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.cline.unsure .tc { color: #f0a640; }
 .cline .tc { color: var(--text-3); font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.cline input { height: 22px; min-width: 0; background: transparent; border: 1px solid transparent; border-radius: 3px; color: var(--text); font: inherit; padding: 0 5px; }
-.cline input:hover { border-color: var(--line-soft); }
-.cline input:focus { border-color: var(--accent); background: var(--bg-sunk); outline: none; }
-.clines .empty { padding: 14px 9px; color: var(--text-3); font-size: 11px; }
-#tsrcline .props { margin-top: 6px; }
+.cline .ed { min-height: 20px; line-height: 20px; padding: 0 5px; border: 1px solid transparent; border-radius: 3px; color: var(--text); outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cline .ed:hover { border-color: var(--line-soft); }
+.cline .ed:focus { border-color: var(--accent); background: var(--bg-sunk); white-space: normal; }
+.cline mark { background: rgba(240, 166, 64, .22); color: #ffcf8a; border-bottom: 1px dashed #f0a640; border-radius: 2px; }
+.clines .empty { padding: 18px 10px; color: var(--text-3); font-size: 11px; text-align: center; line-height: 1.6; }
+.chk { color: #f0a640 !important; font-weight: 600; }
+.lineopts { gap: 6px; margin-top: 6px; flex-wrap: nowrap; font-size: 11px; }
+.lineopts input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.lineopts .val { width: 14px; text-align: right; color: var(--text-2); }
+button.tog { height: 22px; padding: 0 8px; font-size: 11px; font-weight: 700; }
+button.tog.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.fixes { padding: 0 12px 8px; }
+.fixes summary { cursor: pointer; font-size: 11.5px; color: var(--text-2); padding: 4px 0; }
+.fixes textarea { width: 100%; margin: 4px 0; font: 11px/1.5 ui-monospace, Menlo, monospace; background: var(--bg-sunk); border: 1px solid var(--line); border-radius: 4px; color: var(--text); padding: 6px; resize: vertical; }
+.stylerow { flex-wrap: nowrap; gap: 6px; margin-bottom: 7px; font-size: 11px; }
+.stylerow select { flex: 1; }
+.stylerow button { height: 24px; }
 
 /* Motion cards: a real photo instead of the silhouette */
 .mclip.photo { background: #20252d center 22% / cover no-repeat; }

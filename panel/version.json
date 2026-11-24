@@ -1,1 +1,1 @@
-{ "version": "0.5.1", "notes": "Editable captions in Text (no .mov renders). All previews use bundled Anik photos, so they work offline. Drop: Clear list, and ✕ on each drop to remove it from the list or delete the file + project item." }
+{ "version": "0.6.0", "notes": "Text is now Auto captions: transcribes the voice track on your Mac (whisper, offline), one-line captions with a live 9:16 preview, unsure words flagged for review, brand spelling fixes. Needs once: brew install whisper-cpp." }

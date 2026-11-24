@@ -54,6 +54,7 @@
   function showTab(name) {
     Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === name); });
     Array.prototype.forEach.call(document.querySelectorAll('main.tab'), function (m) { m.hidden = m.id !== 'tab-' + name; });
+    if (name === 'text' && tabsSeen.text) drawPreview();
     if (!tabsSeen[name]) { tabsSeen[name] = true; if (name === 'templates') scanTemplates(); if (name === 'motion') renderMotion(); if (name === 'text') renderText(); if (name === 'effects') renderFx(); if (name === 'tools') renderTools(); }
     if (name === 'tools' && tabsSeen.tools) rangeInfo();
     store('ah:tab', name);
@@ -499,22 +500,26 @@
   $('fxphotos').addEventListener('click', usePhotos);
 
   // ================= TEXT =================
-  // Editable captions only, nothing rendered. Lines come from an SRT / VTT, the sequence's caption track, or a typed line,
-  // are re-chunked to one line each, then placed as (a) one Graphics clip per line from a .mogrt, or (b) a native caption track.
-  // Both stay fully editable in Premiere; Size / Position below restyle every placed line at once.
+  // Auto captions: the voice track's audio over the sequence (or In–Out) -> whisper.cpp on this Mac (offline) -> one-line captions.
+  // Unsure words are flagged for review, brand spellings are fixed by rules, every line is editable. Then placed as editable
+  // Graphics text clips (from a caption .mogrt) or a native caption track. Nothing is rendered.
   var CAP = nodeReq(path.join(EXT_DIR, 'lib', 'captions.js'));
   var PRC = nodeReq(path.join(EXT_DIR, 'lib', 'prcaptions.js'));
+  var MODELS = { fast: { file: 'ggml-base.en.bin', mb: 148, label: 'Fast' }, best: { file: 'ggml-small.en.bin', mb: 488, label: 'Accurate' } };
+  var MODEL_DIR = path.join(HOME, 'models');
   var text = {
-    src: load('ah:tsrc', 'srt'), out: load('ah:tout', 'graphics'), at: load('ah:tat', 'zero'),
-    opt: Object.assign({ maxWords: 4, maxChars: 28, upper: false, dropPunct: false }, load('ah:topt', {})),
-    srt: load('ah:tsrtfile', ''), tpl: load('ah:ttpl', ''), pct: load('ah:tpct', 100), off: load('ah:toff', 0), dur: load('ah:tdur', 3),
-    cues: [], lines: [], tpls: [], last: load('ah:tlast', null)
+    range: load('ah:trange', 'all'), model: load('ah:tmodel', 'best'), track: load('ah:ttrack', -1),
+    words: load('ah:twordsN', 4), upper: load('ah:tupper', false),
+    fixesSrc: load('ah:tfixes', CAP.DEFAULT_FIXES),
+    tpl: load('ah:ttpl', ''), pct: load('ah:tpct', 100), off: load('ah:toff', 0),
+    src: null, edits: {},        // { kind: 'words', words: [...] } | { kind: 'cues', cues: [...], label }
+    lines: [], sel: 0, tpls: [], last: load('ah:tlast', null)
   };
-  if (['srt', 'captions', 'line'].indexOf(text.src) < 0) text.src = 'srt';
+  var TRACK_VALUE = '__track';
 
-  // ---- templates: any .mogrt with a text field (Premiere-made Graphics work best) ----
+  // ---- style templates (.mogrt with a text field) + "Premiere caption track" ----
   var CAP_TPL_DIR = path.join(HOME, 'Caption Templates');
-  try { fs.mkdirSync(CAP_TPL_DIR, { recursive: true }); } catch (e) {}
+  try { fs.mkdirSync(CAP_TPL_DIR, { recursive: true }); fs.mkdirSync(MODEL_DIR, { recursive: true }); } catch (e) {}
   function walkMogrt(dir, depth, out) {
     var names = []; try { names = fs.readdirSync(dir); } catch (e) { return; }
     names.forEach(function (n) {
@@ -535,194 +540,280 @@
   }
   function scanCapTemplates() {
     var found = [];
-    walkMogrt(CAP_TPL_DIR, 2, found);
-    walkMogrt(TPL_DIR, 1, found);
+    walkMogrt(CAP_TPL_DIR, 2, found); walkMogrt(TPL_DIR, 1, found);
     appGraphicsDirs().forEach(function (d) { walkMogrt(d, 3, found); });
-    if (text.tpl && fs.existsSync(text.tpl) && found.indexOf(text.tpl) < 0) found.unshift(text.tpl);
+    if (text.tpl && text.tpl !== TRACK_VALUE && fs.existsSync(text.tpl) && found.indexOf(text.tpl) < 0) found.unshift(text.tpl);
     var rank = function (p) { var n = path.basename(p); return p.indexOf(CAP_TPL_DIR) === 0 ? 0 : /caption|subtitle/i.test(n) ? 1 : /title|text|lower/i.test(n) ? 2 : 3; };
-    text.tpls = found.filter(function (p, i) { return found.indexOf(p) === i; })
-      .sort(function (a, b) { return rank(a) - rank(b) || path.basename(a).localeCompare(path.basename(b), undefined, { numeric: true }); });
-    if (!text.tpl || text.tpls.indexOf(text.tpl) < 0) text.tpl = text.tpls[0] || '';
-    paintTemplates();
+    text.tpls = found.filter(function (p, i) { return found.indexOf(p) === i; }).sort(function (a, b) { return rank(a) - rank(b) || path.basename(a).localeCompare(path.basename(b), undefined, { numeric: true }); });
+    if (!text.tpl || (text.tpl !== TRACK_VALUE && text.tpls.indexOf(text.tpl) < 0)) text.tpl = text.tpls[0] || TRACK_VALUE;
+    var tag = function (p) { return p.indexOf(CAP_TPL_DIR) === 0 ? 'Arena' : p.indexOf(TPL_DIR) === 0 ? 'Library' : /Essential Graphics/.test(p) ? 'Premiere' : 'Custom'; };
+    $('ttpl').innerHTML = text.tpls.map(function (p) { return '<option value="' + esc(p) + '"' + (p === text.tpl ? ' selected' : '') + '>' + esc(path.basename(p).replace(/\.mogrt$/i, '') + '  ·  ' + tag(p)) + '</option>'; }).join('') +
+      '<option value="' + TRACK_VALUE + '"' + (text.tpl === TRACK_VALUE ? ' selected' : '') + '>Premiere caption track (no template)</option>';
+    paintPlace();
   }
-  function tplLabel(p) {
-    var where = p.indexOf(CAP_TPL_DIR) === 0 ? 'Arena' : p.indexOf(TPL_DIR) === 0 ? 'Library' : /Essential Graphics/.test(p) ? 'Premiere' : 'Custom';
-    return path.basename(p).replace(/\.mogrt$/i, '') + '  ·  ' + where;
-  }
-  function paintTemplates() {
-    var sel = $('ttpl');
-    sel.innerHTML = text.tpls.length ? text.tpls.map(function (p) { return '<option value="' + esc(p) + '"' + (p === text.tpl ? ' selected' : '') + '>' + esc(tplLabel(p)) + '</option>'; }).join('')
-      : '<option value="">No .mogrt found: Choose…</option>';
-  }
-  $('ttpl').addEventListener('change', function () { text.tpl = this.value; store('ah:ttpl', text.tpl); });
+  $('ttpl').addEventListener('change', function () { text.tpl = this.value; store('ah:ttpl', text.tpl); paintPlace(); });
   function pickFile(title, types) {
     try { var r = window.cep.fs.showOpenDialogEx(false, false, title, '', types); return r && r.data && r.data[0] ? r.data[0] : ''; }
     catch (e) { try { var r2 = window.cep.fs.showOpenDialog(false, false, title, '', types); return r2 && r2.data && r2.data[0] ? r2.data[0] : ''; } catch (e2) { return ''; } }
   }
   function useTemplate(p) {
     if (!p) return;
-    var dest = path.join(CAP_TPL_DIR, path.basename(p));      // keep a copy so it survives the original moving
+    var dest = path.join(CAP_TPL_DIR, path.basename(p));
     try { if (p.indexOf(CAP_TPL_DIR) !== 0) fs.copyFileSync(p, dest); else dest = p; } catch (e) { dest = p; }
     text.tpl = dest; store('ah:ttpl', dest); scanCapTemplates();
-    setStatus('tstatus', 'Template: ' + path.basename(dest), 'ok');
+    setStatus('tstatus', 'Style: ' + path.basename(dest), 'ok');
   }
   $('ttplpick').addEventListener('click', function () { useTemplate(pickFile('Choose a caption .mogrt', ['mogrt'])); });
 
-  // ---- source ----
-  function paintSource() {
-    Array.prototype.forEach.call(document.querySelectorAll('#tsrc button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === text.src); });
-    $('tsrcsrt').hidden = text.src !== 'srt'; $('tsrccap').hidden = text.src !== 'captions'; $('tsrcline').hidden = text.src !== 'line';
-    $('tsrtname').textContent = text.srt ? path.basename(text.srt) : 'Drop an .srt / .vtt here, or click to choose';
-    $('tsrtbox').classList.toggle('has', !!text.srt);
-    Array.prototype.forEach.call(document.querySelectorAll('#tat button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === text.at); });
+  // ---- auto captions ----
+  function whisperBin() { return which('whisper-cli') || which('whisper-cpp') || which('whisper'); }
+  function modelPath() { return path.join(MODEL_DIR, MODELS[text.model].file); }
+  function getModel() {
+    var m = MODELS[text.model], dest = modelPath();
+    if (fs.existsSync(dest)) return Promise.resolve(dest);
+    var url = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/' + m.file, part = dest + '.part';
+    return new Promise(function (resolve, reject) {
+      (function go(u, hops) {
+        https.get(u, { headers: { 'User-Agent': 'agentix-arena-hub' } }, function (res) {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && hops < 8) { res.resume(); return go(new URL(res.headers.location, u).href, hops + 1); }
+          if (res.statusCode !== 200) { res.resume(); return reject(new Error('Model download failed (HTTP ' + res.statusCode + ').')); }
+          var total = +res.headers['content-length'] || m.mb * 1e6, got = 0, ws = fs.createWriteStream(part), bar = $('tprog').firstElementChild;
+          res.on('data', function (d) { got += d.length; ws.write(d); bar.style.width = Math.round(got / total * 100) + '%'; setStatus('tstatus', 'One-time download of the ' + m.label + ' speech model · ' + Math.round(got / 1e6) + ' of ' + Math.round(total / 1e6) + ' MB'); });
+          res.on('end', function () { ws.end(function () { fs.renameSync(part, dest); resolve(dest); }); });
+          res.on('error', reject);
+        }).on('error', reject);
+      })(url, 0);
+    });
   }
-  segValue('tsrc', function (v) { text.src = v; store('ah:tsrc', v); paintSource(); loadSource(true); });
-  segValue('tat', function (v) { text.at = v; store('ah:tat', v); });
+  async function mixVoice(r) {
+    var ff = which('ffmpeg'); if (!ff) throw new Error('ffmpeg is needed (brew install ffmpeg).');
+    var clips = r.clips.filter(function (c) { return fs.existsSync(c.path); });
+    if (!clips.length) throw new Error('No audio clips on ' + ('A' + (r.track + 1)) + ' in this range' + (r.clips.length ? ' (media offline)' : '') + '.');
+    var out = path.join(CACHE, 'voice-' + Date.now() + '.wav'), args = ['-y', '-loglevel', 'error'], fil = [];
+    clips.forEach(function (c, i) {
+      var from = Math.max(r.a, c.start), to = Math.min(r.b, c.end), sp = c.speed || 1;
+      args.push('-ss', String(c.in + (from - c.start) * sp), '-t', String((to - from) * sp), '-i', c.path);
+      fil.push('[' + i + ':a]' + (Math.abs(sp - 1) > 0.01 ? 'atempo=' + Math.min(2, Math.max(0.5, sp)) + ',' : '') + 'aresample=16000,aformat=channel_layouts=mono,adelay=delays=' + Math.round((from - r.a) * 1000) + ':all=1[a' + i + ']');
+    });
+    fil.push(clips.map(function (c, i) { return '[a' + i + ']'; }).join('') + 'amix=inputs=' + clips.length + ':normalize=0:duration=longest[m]');
+    args.push('-filter_complex', fil.join(';'), '-map', '[m]', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', out);
+    var res = await run(ff, args);
+    if (res.err || !fs.existsSync(out)) throw new Error('Could not read the audio: ' + (res.errText.split('\n').filter(Boolean).pop() || 'ffmpeg failed'));
+    return out;
+  }
+  function vocabPrompt() {
+    var words = [];
+    CAP.parseFixes(text.fixesSrc).forEach(function (r) { if (words.indexOf(r.to) < 0) words.push(r.to); });
+    return words.length ? 'Words used: ' + words.join(', ') + '.' : '';
+  }
+  async function autoCaptions() {
+    if (busy) return;
+    await refresh();
+    if (!info.sequence) return setStatus('tstatus', 'Open a sequence first.', 'warn');
+    var wb = whisperBin();
+    if (!wb) return setStatus('tstatus', 'Auto captions need whisper on this Mac, once: open Terminal and run  brew install whisper-cpp  then press Auto captions again.', 'warn');
+    busy = true; $('tauto').disabled = true; $('tprog').hidden = false; var bar = $('tprog').firstElementChild; bar.style.width = '0';
+    try {
+      var model = await getModel();
+      setStatus('tstatus', 'Reading the voice track…'); bar.style.width = '8%';
+      var r = await jsx('ahAudioClips(' + (text.range === 'inout') + ',' + (+text.track) + ')');
+      if (r.error) throw new Error(r.error);
+      paintTracks(r);
+      var wav = await mixVoice(r);
+      setStatus('tstatus', 'Listening… ' + fmtTc(r.b - r.a) + ' of audio on A' + (r.track + 1) + ' (' + MODELS[text.model].label + ' model, on this Mac)'); bar.style.width = '20%';
+      var base = wav.replace(/\.wav$/, ''), timer = setInterval(function () { var w = parseFloat(bar.style.width) || 20; if (w < 92) bar.style.width = (w + 1) + '%'; }, Math.max(300, (r.b - r.a) * 25));
+      var args = ['-m', model, '-f', wav, '-l', 'en', '-ml', '1', '-sow', '-ojf', '-of', base, '-np', '-t', String(Math.max(2, Math.min(8, (os.cpus() || []).length || 4)))];
+      var pr = vocabPrompt(); if (pr) args.push('--prompt', pr);
+      var res = await run(wb, args);
+      clearInterval(timer);
+      if (!fs.existsSync(base + '.json')) throw new Error('Whisper failed: ' + (res.errText.split('\n').filter(Boolean).pop() || 'no output'));
+      var words = CAP.whisperWords(JSON.parse(fs.readFileSync(base + '.json', 'utf8')), r.a);
+      try { fs.unlinkSync(wav); fs.unlinkSync(base + '.json'); } catch (e) {}
+      if (!words.length) throw new Error('No speech found on A' + (r.track + 1) + '. Pick the voice track and try again.');
+      newSource({ kind: 'words', words: words, seq: info.seqId });
+      try { fs.writeFileSync(path.join(CACHE, 'words-' + safeName(info.seqId) + '.json'), JSON.stringify(text.src)); } catch (e) {}
+      bar.style.width = '100%';
+      rechunk(true);
+    } catch (e) { setStatus('tstatus', e.message || String(e), 'bad'); }
+    busy = false; $('tauto').disabled = false; setTimeout(function () { $('tprog').hidden = true; }, 800);
+  }
+  $('tauto').addEventListener('click', autoCaptions);
+  segValue('trange', function (v) { text.range = v; store('ah:trange', v); });
+  $('tmodel').addEventListener('change', function () { text.model = this.value; store('ah:tmodel', text.model); });
+  $('ttrack').addEventListener('change', function () { text.track = +this.value; store('ah:ttrack', text.track); });
+  function paintTracks(r) {
+    if (!r || !r.tracks) return;
+    $('ttrack').innerHTML = '<option value="-1">Voice: auto</option>' + r.tracks.map(function (t) { return '<option value="' + t.i + '"' + (t.i === +text.track ? ' selected' : '') + '>Voice: ' + t.name + (t.clips ? ' · ' + t.clips + ' clips' : ' · empty') + (t.muted ? ' · muted' : '') + '</option>'; }).join('');
+  }
+
+  // other sources
+  $('tsrt').addEventListener('click', function () { loadSrt(pickFile('Choose captions', ['srt', 'vtt'])); });
   function loadSrt(p) {
     if (!p) return;
     try {
       var cues = CAP.parse(fs.readFileSync(p, 'utf8'));
-      if (!cues.length) { setStatus('tstatus', path.basename(p) + ' has no timed captions.', 'warn'); return; }
-      text.srt = p; store('ah:tsrtfile', p); text.cues = cues; paintSource(); rechunk();
-      setStatus('tstatus', cues.length + ' captions read from ' + path.basename(p) + '.', 'ok');
+      if (!cues.length) return setStatus('tstatus', path.basename(p) + ' has no timed captions.', 'warn');
+      newSource({ kind: 'cues', cues: cues, label: path.basename(p) }); rechunk(true);
     } catch (e) { setStatus('tstatus', 'Could not read ' + path.basename(p) + ': ' + e.message, 'bad'); }
   }
-  $('tsrtbox').addEventListener('click', function () { loadSrt(pickFile('Choose captions', ['srt', 'vtt'])); });
-  $('tcapread').addEventListener('click', function () { loadSource(false); });
-  $('tline').addEventListener('input', function () { if (text.src === 'line') loadSource(true); });
-  async function loadSource(quiet) {
-    text.cues = [];
-    if (text.src === 'srt') {
-      if (text.srt && fs.existsSync(text.srt)) { try { text.cues = CAP.parse(fs.readFileSync(text.srt, 'utf8')); } catch (e) {} }
-    } else if (text.src === 'line') {
-      var t = $('tline').value.trim(); if (t) text.cues = [{ start: 0, end: +text.dur, text: t }];
-    } else if (!quiet) {              // caption track: saves the project, so only on request
-      await refresh();
-      if (!info.sequence) { setStatus('tstatus', 'Open the sequence with the captions.', 'warn'); return rechunk(); }
-      try {
-        setStatus('tstatus', 'Saving and reading the caption track…');
-        var sv = await jsx('ahSave()'); if (sv.error) throw new Error(sv.error);
-        var r = PRC.readCaptions(sv.path, info.seqId);
-        if (!r.tracks.length) throw new Error('This sequence has no caption track. Text panel › Transcript › Create captions, or use an SRT.');
-        text.cues = r.tracks[0].map(function (c) { return { start: c.start, end: c.end, text: String(c.text).replace(/\s+/g, ' ').trim() }; }).filter(function (c) { return c.text; });
-        setStatus('tstatus', text.cues.length + ' captions read from the caption track. Placing on Graphics keeps their timing; hide the old caption track afterwards.', 'ok');
-      } catch (e) { setStatus('tstatus', e.message, 'bad'); }
-    } else {
-      setStatus('tstatus', 'Read the caption track to load it (this saves the project first).');
-    }
-    rechunk();
-  }
+  $('tcapread').addEventListener('click', async function () {
+    await refresh();
+    if (!info.sequence) return setStatus('tstatus', 'Open the sequence with the captions.', 'warn');
+    try {
+      setStatus('tstatus', 'Saving and reading the caption track…');
+      var sv = await jsx('ahSave()'); if (sv.error) throw new Error(sv.error);
+      var r = PRC.readCaptions(sv.path, info.seqId);
+      if (!r.tracks.length) throw new Error('This sequence has no caption track.');
+      newSource({ kind: 'cues', cues: r.tracks[0].map(function (c) { return { start: c.start, end: c.end, text: String(c.text).replace(/\s+/g, ' ').trim() }; }).filter(function (c) { return c.text; }), label: 'the caption track' });
+      rechunk(true);
+    } catch (e) { setStatus('tstatus', e.message, 'bad'); }
+  });
 
-  // ---- lines: one line per caption ----
-  var LINE_OPTS = [
-    { k: 'maxWords', l: 'Words / line', min: 1, max: 10, step: 1, f: function (v) { return v; } },
-    { k: 'maxChars', l: 'Max chars', min: 8, max: 60, step: 1, f: function (v) { return v; } }
-  ];
-  function renderLineOpts() {
-    var o = text.opt;
-    $('topts').innerHTML = LINE_OPTS.map(function (d, i) {
-      return '<label>' + d.l + '</label><div class="ctl"><input type="range" data-i="' + i + '" min="' + d.min + '" max="' + d.max + '" step="' + d.step + '" value="' + o[d.k] + '"><span class="val">' + d.f(o[d.k]) + '</span></div>';
-    }).join('') +
-      '<label>Case</label><div class="ctl"><div class="seg" id="tcase"><button data-v="0" class="' + (o.upper ? '' : 'on') + '">As written</button><button data-v="1" class="' + (o.upper ? 'on' : '') + '">ALL CAPS</button></div></div>' +
-      '<label>Punctuation</label><div class="ctl"><div class="seg" id="tpunct"><button data-v="0" class="' + (o.dropPunct ? '' : 'on') + '">Keep</button><button data-v="1" class="' + (o.dropPunct ? 'on' : '') + '">Drop , . ; :</button></div></div>';
-    Array.prototype.forEach.call($('topts').querySelectorAll('input[type=range]'), function (el) {
-      var d = LINE_OPTS[+el.getAttribute('data-i')];
-      el.addEventListener('input', function () { o[d.k] = +el.value; el.nextSibling.textContent = d.f(+el.value); store('ah:topt', o); rechunkSoon(); });
-    });
-    segValue('tcase', function (v) { o.upper = v === '1'; store('ah:topt', o); rechunk(); });
-    segValue('tpunct', function (v) { o.dropPunct = v === '1'; store('ah:topt', o); rechunk(); });
-  }
-  var rcTimer; function rechunkSoon() { clearTimeout(rcTimer); rcTimer = setTimeout(rechunk, 120); }
+  // ---- lines ----
   function fmtTc(s) { var m = Math.floor(s / 60), r = s - m * 60; return m + ':' + (r < 10 ? '0' : '') + r.toFixed(1); }
-  function rechunk() {
-    text.lines = text.src === 'line' ? text.cues.map(function (c) { return Object.assign({}, c, { text: text.opt.upper ? c.text.toUpperCase() : c.text }); }) : CAP.chunk(text.cues, text.opt);
-    var box = $('tlines');
-    $('tcount').textContent = text.lines.length ? text.lines.length + ' line' + (text.lines.length > 1 ? 's' : '') : '';
-    if (!text.lines.length) { box.innerHTML = '<div class="empty">' + (text.src === 'captions' ? 'Read the caption track to see its lines.' : text.src === 'line' ? 'Type a line above.' : 'Choose an SRT to see its lines.') + '</div>'; paintPlace(); return; }
-    box.innerHTML = text.lines.map(function (l, i) {
-      return '<div class="cline"><span class="tc">' + fmtTc(l.start) + '</span><input data-i="' + i + '" value="' + esc(l.text) + '" spellcheck="false"></div>';
-    }).join('');
-    Array.prototype.forEach.call(box.querySelectorAll('input'), function (el) {
-      el.addEventListener('input', function () { text.lines[+el.getAttribute('data-i')].text = el.value; });
+  function rechunk(announce) {
+    var fixes = CAP.parseFixes(text.fixesSrc), o = { maxWords: +text.words, maxChars: Math.max(14, +text.words * 9), upper: text.upper, dropPunct: true, fixes: fixes };
+    if (!text.src) text.lines = [];
+    else if (text.src.kind === 'words') text.lines = CAP.fromWords(text.src.words, o);
+    else text.lines = CAP.chunk(text.src.cues, o).map(function (l) { var f = CAP.applyFixes(l.text, fixes); return Object.assign(l, { text: text.upper ? f.text.toUpperCase() : f.text, unsure: [], fixed: f.hits }); });
+    text.lines.forEach(function (l) {      // hand fixes survive re-chunking when the line keeps its timing
+      var e = text.edits[lineKey(l)];
+      if (e !== undefined) { l.text = text.upper ? e.toUpperCase() : e; l.unsure = []; }
     });
-    paintPlace();
+    text.sel = Math.min(text.sel, Math.max(0, text.lines.length - 1));
+    renderLines();
+    if (announce && text.lines.length) {
+      var unsure = text.lines.filter(function (l) { return l.unsure && l.unsure.length; }).length, fixed = text.lines.reduce(function (s, l) { return s + (l.fixed || 0); }, 0);
+      setStatus('tstatus', text.lines.length + ' captions' + (text.src.kind === 'cues' ? ' from ' + text.src.label : '') + '.' + (fixed ? ' ' + fixed + ' spelling' + (fixed > 1 ? 's' : '') + ' fixed.' : '') + (unsure ? ' ' + unsure + ' line' + (unsure > 1 ? 's' : '') + ' to check (orange).' : ''), unsure ? 'warn' : 'ok');
+    }
   }
+  function lineKey(l) { return l.start.toFixed(2) + '|' + l.end.toFixed(2); }
+  function newSource(src) { text.src = src; text.edits = {}; text.sel = 0; }
+  function markUnsure(t, unsure) {
+    var h = esc(t);
+    (unsure || []).forEach(function (w) { if (w.length > 1) h = h.replace(new RegExp('(^|[^\\w])(' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?=$|[^\\w])', 'i'), '$1<mark>$2</mark>'); });
+    return h;
+  }
+  function renderLines() {
+    var box = $('tlines'), L = text.lines;
+    var todo = L.filter(function (l) { return l.unsure && l.unsure.length; }).length;
+    $('tcount').textContent = L.length ? L.length + ' lines' : '';
+    $('tcheck').hidden = !todo; $('tcheck').textContent = todo + ' to check →';
+    if (!L.length) { box.innerHTML = '<div class="empty">Press <b>Auto captions</b> to transcribe the voice.<br>Or load an SRT / the caption track.</div>'; paintPlace(); drawPreview(); return; }
+    box.innerHTML = L.map(function (l, i) {
+      return '<div class="cline' + (i === text.sel ? ' on' : '') + (l.unsure && l.unsure.length ? ' unsure' : '') + '" data-i="' + i + '"><span class="tc">' + fmtTc(l.start) + '</span>' +
+        '<div class="ed" contenteditable="true" spellcheck="true" data-i="' + i + '">' + markUnsure(l.text, l.unsure) + '</div></div>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.ed'), function (el) {
+      var i = +el.getAttribute('data-i');
+      el.addEventListener('focus', function () { selectLine(i, true); });
+      el.addEventListener('input', function () { text.lines[i].text = el.textContent.replace(/\s+/g, ' ').trim(); text.edits[lineKey(text.lines[i])] = text.lines[i].text; if (text.lines[i].unsure && text.lines[i].unsure.length) { text.lines[i].unsure = []; el.parentNode.classList.remove('unsure'); paintCheck(); } drawPreview(); });
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); var nx = box.querySelector('.ed[data-i="' + (i + 1) + '"]'); if (nx) nx.focus(); }
+        if (e.key === 'Escape') el.blur();
+      });
+    });
+    paintPlace(); drawPreview();
+  }
+  function paintCheck() { var todo = text.lines.filter(function (l) { return l.unsure && l.unsure.length; }).length; $('tcheck').hidden = !todo; $('tcheck').textContent = todo + ' to check →'; }
+  function selectLine(i, seek) {
+    text.sel = i;
+    Array.prototype.forEach.call(document.querySelectorAll('#tlines .cline'), function (c) { c.classList.toggle('on', +c.getAttribute('data-i') === i); });
+    drawPreview();
+    if (seek && text.lines[i] && info.sequence) evalJsx('ahSeek(' + (text.lines[i].start + 0.05) + ')');      // the Program monitor shows the real frame
+  }
+  $('tcheck').addEventListener('click', function () {
+    var L = text.lines, n = L.length;
+    for (var k = 1; k <= n; k++) {
+      var i = (text.sel + k) % n;
+      if (L[i].unsure && L[i].unsure.length) {
+        var el = document.querySelector('#tlines .ed[data-i="' + i + '"]'); el.scrollIntoView({ block: 'center' }); el.focus();
+        var mk = el.querySelector('mark'); if (mk) { var rg = document.createRange(); rg.selectNodeContents(mk); var sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(rg); }
+        return;
+      }
+    }
+  });
+  $('twords').addEventListener('input', function () { text.words = +this.value; store('ah:twordsN', text.words); $('twordsv').textContent = text.words; clearTimeout(text.rc); text.rc = setTimeout(rechunk, 120); });
+  $('tupper').addEventListener('click', function () { text.upper = !text.upper; store('ah:tupper', text.upper); this.classList.toggle('on', text.upper); rechunk(); });
 
-  // ---- output ----
-  function paintOut() {
-    Array.prototype.forEach.call(document.querySelectorAll('#tout button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === text.out); });
-    $('tgfx').hidden = text.out !== 'graphics';
-    $('tadjust').hidden = text.out !== 'graphics';
-    $('tcapnote').hidden = text.out !== 'track';
-    paintPlace();
+  // spelling fixes (brand words): editable rules, re-applied live
+  $('tfixes').value = text.fixesSrc;
+  $('tfixes').addEventListener('input', function () { text.fixesSrc = this.value; store('ah:tfixes', text.fixesSrc); clearTimeout(text.fx); text.fx = setTimeout(function () { rechunk(true); }, 300); });
+  $('tfixreset').addEventListener('click', function () { text.fixesSrc = CAP.DEFAULT_FIXES; $('tfixes').value = text.fixesSrc; store('ah:tfixes', text.fixesSrc); rechunk(true); });
+
+  // ---- preview: the selected line on a 9:16 photo, at the chosen Size / Position ----
+  var pvImg = new Image(); pvImg.onload = drawPreview; if (PHOTOS.length) pvImg.src = photo(1);
+  function drawPreview() {
+    var cv = $('tpv'); if (!cv || $('tab-text').hidden) return;
+    var wh = frameWH(), W = 216, H = Math.round(W * wh[1] / wh[0]), x = cv.getContext('2d');
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    x.fillStyle = '#0b0c0e'; x.fillRect(0, 0, W, H);
+    if (pvImg.complete && pvImg.naturalWidth) { var iw = pvImg.naturalWidth, ih = pvImg.naturalHeight, k = Math.max(W / iw, H / ih); x.drawImage(pvImg, (W - iw * k) / 2, (H - ih * k) / 2, iw * k, ih * k); }
+    var l = text.lines[text.sel], t = l ? l.text : 'Your caption here';
+    var fs_ = Math.round(W * 0.068 * text.pct / 100), y = H * (0.72 + text.off / 100);
+    x.font = '800 ' + fs_ + 'px Montserrat, "Helvetica Neue", Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    while (x.measureText(t).width > W * 0.9 && fs_ > 8) { fs_--; x.font = '800 ' + fs_ + 'px Montserrat, "Helvetica Neue", Arial, sans-serif'; }
+    x.lineJoin = 'round'; x.lineWidth = Math.max(2, fs_ * 0.16); x.strokeStyle = 'rgba(0,0,0,.85)'; x.strokeText(t, W / 2, y);
+    x.fillStyle = '#fff'; x.fillText(t, W / 2, y);
+    $('tpvnote').textContent = l ? fmtTc(l.start) + ' – ' + fmtTc(l.end) : '';
   }
-  segValue('tout', function (v) { text.out = v; store('ah:tout', v); paintOut(); });
+  var pvN = 1; $('tpvnext').addEventListener('click', function () { pvImg.src = photo(++pvN); });
+
+  // ---- place ----
   function paintPlace() {
-    var n = text.lines.length, b = $('tplace');
-    b.disabled = !n;
-    b.textContent = !n ? 'No lines yet' : text.out === 'track' ? 'Add caption track (' + n + ')' : 'Place ' + n + ' text clip' + (n > 1 ? 's' : '');
+    var n = text.lines.length, b = $('tplace'); if (!b) return;
+    b.disabled = !n || busy;
+    b.textContent = !n ? 'No captions yet' : text.tpl === TRACK_VALUE ? 'Add ' + n + ' captions as caption track' : 'Place ' + n + ' captions';
   }
-  function offsetFor() { return text.src === 'captions' ? 0 : (text.src === 'line' || text.at === 'playhead') ? (info.playhead || 0) : 0; }
   function liveLines() { return text.lines.map(function (l) { return { start: l.start, end: l.end, text: String(l.text).replace(/\s+/g, ' ').trim() }; }).filter(function (l) { return l.text; }); }
-  function writeSrt(lines, off) {
-    var out = uniq(assetDir('Text'), safeName((info.sequence || 'captions') + ' - lines') + '-' + stamp(), '.srt');
-    fs.writeFileSync(out, CAP.toSrt(lines, off), 'utf8');
-    return out;
+  function writeSrt(lines) {
+    var out = uniq(assetDir('Text'), safeName((info.sequence || 'captions') + ' - captions') + '-' + stamp(), '.srt');
+    fs.writeFileSync(out, CAP.toSrt(lines, 0), 'utf8'); return out;
   }
-
   $('tplace').addEventListener('click', async function () {
     if (busy) return;
     await refresh();
     if (!info.sequence) return setStatus('tstatus', 'Open a sequence first.', 'warn');
-    var lines = liveLines(); if (!lines.length) return setStatus('tstatus', 'No lines to place.', 'warn');
-    var off = offsetFor(), bar = $('tprog').firstElementChild;
-    busy = true; $('tplace').disabled = true; $('tprog').hidden = false; bar.style.width = '0';
+    var lines = liveLines(); if (!lines.length) return;
+    var todo = text.lines.filter(function (l) { return l.unsure && l.unsure.length; }).length;
+    var bar = $('tprog').firstElementChild;
+    busy = true; paintPlace(); $('tprog').hidden = false; bar.style.width = '0';
     try {
-      if (text.out === 'track') {
-        setStatus('tstatus', 'Making the caption track…');
-        var srt = writeSrt(lines, off), r = await jsx('ahCaptionTrack(' + q(srt) + ')');
-        if (r.error) throw new Error(r.error);
+      if (text.tpl === TRACK_VALUE) {
+        var r = await jsx('ahCaptionTrack(' + q(writeSrt(lines)) + ')'); if (r.error) throw new Error(r.error);
         bar.style.width = '100%';
-        setStatus('tstatus', lines.length + ' one-line captions added as a caption track. Select them all in the timeline to change font, size and position together in Essential Graphics.', 'ok');
+        setStatus('tstatus', lines.length + ' captions added as a caption track. Select them all to restyle in Essential Graphics.', 'ok');
       } else {
-        if (!text.tpl || !fs.existsSync(text.tpl)) throw new Error('Choose a caption template (.mogrt) first, or switch Output to Caption track.');
-        var a = lines[0].start + off, z = lines[lines.length - 1].end + off;
-        var tr = await jsx('ahTrackFor(' + a + ',' + (z + 10) + ',1)');
-        if (tr.error) throw new Error(tr.error);
-        var placed = 0, textSet = 0, base = 0, unit = '%', BATCH = 12;
-        for (var i = 0; i < lines.length; i += BATCH) {
-          var part = lines.slice(i, i + BATCH).map(function (l) { return { s: l.start + off, e: l.end + off, t: l.text }; });
-          setStatus('tstatus', 'Placing ' + Math.min(i + BATCH, lines.length) + ' of ' + lines.length + '…');
+        if (!fs.existsSync(text.tpl)) throw new Error('Choose a caption style (.mogrt) first.');
+        var a = lines[0].start, z = lines[lines.length - 1].end;
+        var tr = await jsx('ahTrackFor(' + a + ',' + (z + 10) + ',1)'); if (tr.error) throw new Error(tr.error);
+        var placed = 0, textSet = 0, base = 0, unit = '%', B = 12;
+        for (var i = 0; i < lines.length; i += B) {
+          var part = lines.slice(i, i + B).map(function (l) { return { s: l.start, e: l.end, t: l.text }; });
+          setStatus('tstatus', 'Placing ' + Math.min(i + B, lines.length) + ' of ' + lines.length + '…');
           var rb = await jsx('ahCapBatch(' + q(text.tpl) + ',' + tr.track + ',' + q(JSON.stringify(part)) + ',' + (+text.pct) + ')');
           if (rb.error) throw new Error(rb.error);
-          placed += rb.placed; textSet += rb.textSet;
-          if (!base && rb.base) { base = rb.base; unit = rb.unit; } else if (i === 0) unit = rb.unit;
-          bar.style.width = Math.round(Math.min(i + BATCH, lines.length) / lines.length * 100) + '%';
+          placed += rb.placed; textSet += rb.textSet; if (!base && rb.base) { base = rb.base; unit = rb.unit; }
+          bar.style.width = Math.round(Math.min(i + B, lines.length) / lines.length * 100) + '%';
         }
-        if (!placed) throw new Error('Premiere refused this template. Try a Premiere-made Graphics .mogrt.');
+        if (!placed) throw new Error('Premiere refused this style. Try a Premiere-made Graphics .mogrt.');
         text.last = { seq: info.seqId, track: tr.track, a: a, b: z, base: base, unit: unit }; store('ah:tlast', text.last);
-        paintAdjust();
-        var note = textSet < placed ? ' The template has no text field Arena can write, so ' + (placed - textSet) + ' show its default text: pick another template.' : '';
-        setStatus('tstatus', placed + ' editable text clips on V' + (tr.track + 1) + (tr.added ? ' (new track)' : '') + '. Double-click any one to edit it; Size and Position below change them all.' + note, note ? 'warn' : 'ok');
+        var note = textSet < placed ? ' ' + (placed - textSet) + ' kept the template text: this style has no text field Arena can write.' : '';
+        setStatus('tstatus', placed + ' editable captions on V' + (tr.track + 1) + '.' + (todo ? ' ' + todo + ' line' + (todo > 1 ? 's' : '') + ' still unchecked.' : '') + ' Size / Position here change them all.' + note, note || todo ? 'warn' : 'ok');
       }
     } catch (e) { setStatus('tstatus', e.message || String(e), 'bad'); }
     busy = false; paintPlace(); setTimeout(function () { $('tprog').hidden = true; }, 800);
   });
   $('tsave').addEventListener('click', async function () {
     await refresh();
-    var lines = liveLines(); if (!lines.length) return setStatus('tstatus', 'No lines to save.', 'warn');
-    try { var p = writeSrt(lines, offsetFor()); cp.execFile('/usr/bin/open', ['-R', p]); setStatus('tstatus', 'Saved ' + path.basename(p) + ' (' + lines.length + ' one-line captions).', 'ok'); }
-    catch (e) { setStatus('tstatus', e.message, 'bad'); }
+    var lines = liveLines(); if (!lines.length) return setStatus('tstatus', 'No captions to save.', 'warn');
+    try { var p = writeSrt(lines); cp.execFile('/usr/bin/open', ['-R', p]); setStatus('tstatus', 'Saved ' + path.basename(p) + '.', 'ok'); } catch (e) { setStatus('tstatus', e.message, 'bad'); }
   });
 
-  // ---- adjust placed captions: Size / Position on the selection, else on the last batch ----
-  function paintAdjust() {
-    $('tpct').value = text.pct; $('tpctv').textContent = text.pct + '%';
-    $('toffs').value = text.off; $('toffv').textContent = (text.off > 0 ? '+' : '') + text.off + '%';
-    $('tadjnote').textContent = text.last ? 'Changes the selected captions, or the last batch on V' + (text.last.track + 1) + ' when nothing is selected.' : 'Size is used when placing. After placing, it changes the selected captions, or the whole batch.';
-  }
+  // ---- size / position: preview now, and the placed captions (selection, else last batch) ----
   var adjTimer;
   function adjust(which) {
+    drawPreview();
     clearTimeout(adjTimer);
     adjTimer = setTimeout(async function () {
       if (busy) return;
@@ -731,26 +822,28 @@
       if (!L && !info.selected) return;
       var r = await jsx('ahCapStyle(' + (L ? L.track : -1) + ',' + (L ? L.a : 0) + ',' + (L ? L.b : 0) + ',' + (which === 'size' ? +text.pct : 'null') + ',' + (L && L.base ? L.base : 0) + ',' + (which === 'pos' ? +text.off : 'null') + ')');
       if (r.error) return setStatus('tstatus', r.error, 'bad');
-      setStatus('tstatus', (which === 'size' ? 'Size ' + text.pct + '%' : 'Position ' + (text.off > 0 ? '+' : '') + text.off + '%') + ' on ' + r.done + (r.selection ? ' selected' : '') + ' caption' + (r.done === 1 ? '' : 's') + (r.miss ? ' (' + r.miss + ' had no size / position to change)' : '') + '.', r.miss ? 'warn' : 'ok');
+      setStatus('tstatus', (which === 'size' ? 'Size ' + text.pct + '%' : 'Position ' + (text.off > 0 ? '+' : '') + text.off) + ' on ' + r.done + (r.selection ? ' selected' : '') + ' captions.', r.miss ? 'warn' : 'ok');
     }, 260);
   }
   $('tpct').addEventListener('input', function () { text.pct = +this.value; store('ah:tpct', text.pct); $('tpctv').textContent = text.pct + '%'; adjust('size'); });
-  $('toffs').addEventListener('input', function () { text.off = +this.value; store('ah:toff', text.off); $('toffv').textContent = (text.off > 0 ? '+' : '') + text.off + '%'; adjust('pos'); });
-  $('tdur').addEventListener('input', function () { text.dur = +this.value; store('ah:tdur', text.dur); $('tdurv').textContent = text.dur + 's'; loadSource(true); });
+  $('toffs').addEventListener('input', function () { text.off = +this.value; store('ah:toff', text.off); $('toffv').textContent = (text.off > 0 ? '+' : '') + text.off; adjust('pos'); });
 
-  // drop an .srt / .vtt / .mogrt anywhere on the Text tab
   document.addEventListener('drop', function (e) {
     if (!document.querySelector('#tab-text:not([hidden])')) return;
     var f = Array.prototype.slice.call(e.dataTransfer.files || []).map(function (x) { return x.path; }).filter(Boolean)[0];
     if (!f) return;
-    if (/\.(srt|vtt)$/i.test(f)) { text.src = 'srt'; store('ah:tsrc', 'srt'); loadSrt(f); }
-    else if (/\.mogrt$/i.test(f)) { text.out = 'graphics'; store('ah:tout', 'graphics'); paintOut(); useTemplate(f); }
-    else setStatus('tstatus', 'Drop an .srt, .vtt or .mogrt here.', 'warn');
+    if (/\.(srt|vtt)$/i.test(f)) loadSrt(f); else if (/\.mogrt$/i.test(f)) useTemplate(f); else setStatus('tstatus', 'Drop an .srt, .vtt or .mogrt here.', 'warn');
   });
 
   function renderText() {
-    $('tdur').value = text.dur; $('tdurv').textContent = text.dur + 's';
-    renderLineOpts(); paintSource(); paintOut(); paintAdjust(); scanCapTemplates(); loadSource(true);
+    $('twords').value = text.words; $('twordsv').textContent = text.words; $('tupper').classList.toggle('on', text.upper);
+    $('tpct').value = text.pct; $('tpctv').textContent = text.pct + '%'; $('toffs').value = text.off; $('toffv').textContent = (text.off > 0 ? '+' : '') + text.off;
+    $('tmodel').value = text.model;
+    Array.prototype.forEach.call(document.querySelectorAll('#trange button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === text.range); });
+    scanCapTemplates();
+    try { var c = JSON.parse(fs.readFileSync(path.join(CACHE, 'words-' + safeName(info.seqId || 'x') + '.json'), 'utf8')); if (c && c.words) text.src = c; } catch (e) {}
+    rechunk();
+    if (info.sequence) jsx('ahAudioClips(false,' + (+text.track) + ')').then(function (r) { if (!r.error) paintTracks(r); });
   }
 
   // ================= EFFECTS =================

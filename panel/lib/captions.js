@@ -79,4 +79,82 @@ function toSrt(lines, offset) {
   return lines.map(function (l, i) { return (i + 1) + '\n' + stamp(l.start + off) + ' --> ' + stamp(l.end + off) + '\n' + l.text + '\n'; }).join('\n');
 }
 
-module.exports = { parse: parse, chunk: chunk, toSrt: toSrt, toSec: toSec };
+// ---- spelling fixes: one rule per line, "wrong, other wrong => Right" (whole words / phrases, any case) ----
+var DEFAULT_FIXES = [
+  'anik, aneek, anick, aniq, a nick => ANIK',
+  'singhal, singal, sing al => Singal',
+  'ugentic, u gentic, eugentic, urgentic, agentic ai => UGENTIC',
+  'clone iq, clone i q, clone i.q. => CloneIQ',
+  'clone studio, clone dot studio => Clone.Studio',
+  'heygen, hey gen, hey jen => HeyGen',
+  'chat gpt, chatgbt => ChatGPT'
+].join('\n');
+function parseFixes(src) {
+  return String(src || '').split('\n').map(function (l) {
+    var m = l.split('=>'); if (m.length !== 2) return null;
+    var to = m[1].trim(); if (!to) return null;
+    var from = m[0].split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    return from.length ? { from: from, to: to } : null;
+  }).filter(Boolean);
+}
+function reEsc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function applyFixes(text, rules) {
+  var out = String(text), hits = 0;
+  (rules || []).forEach(function (r) {
+    r.from.forEach(function (f) {
+      var re = new RegExp('(^|[^\\w])' + reEsc(f).replace(/\s+/g, '\\s+') + '(?=$|[^\\w])', 'gi');
+      out = out.replace(re, function (m, pre) { hits++; return pre + r.to; });
+    });
+  });
+  return { text: out, hits: hits };
+}
+
+// ---- words (from the transcriber) -> one-line captions ----
+// words: [{w, s, e, p}] in seconds, p = confidence 0..1. A line breaks on: max words / chars, a pause, a sentence end.
+function fromWords(words, opts) {
+  var o = Object.assign({ maxWords: 4, maxChars: 28, pause: 0.6, upper: false, dropPunct: true, fixes: [], unsure: 0.55 }, opts || {});
+  var lines = [], cur = [];
+  function flush() {
+    if (!cur.length) return;
+    var raw = cur.map(function (x) { return x.w; }).join(' ').replace(/\s+([,.!?;:])/g, '$1');
+    var fx = applyFixes(raw, o.fixes), txt = fx.text;
+    if (o.dropPunct) txt = txt.replace(/[,.;:]+(?=\s|$)/g, '').replace(/\s+/g, ' ').trim();
+    if (o.upper) txt = txt.toUpperCase();
+    var unsure = cur.filter(function (x) { return x.p < o.unsure && !applyFixes(x.w, o.fixes).hits; })
+      .map(function (x) { return x.w.replace(/[^\w'’-]/g, ''); }).filter(Boolean);
+    if (txt) lines.push({ start: round3(cur[0].s), end: round3(cur[cur.length - 1].e), text: txt, unsure: unsure, fixed: fx.hits });
+    cur = [];
+  }
+  words.forEach(function (w, i) {
+    var prev = cur[cur.length - 1];
+    if (prev) {
+      var len = cur.map(function (x) { return x.w; }).join(' ').length + 1 + w.w.length;
+      if (cur.length >= o.maxWords || len > o.maxChars || w.s - prev.e > o.pause || /[.!?]$/.test(prev.w)) flush();
+    }
+    cur.push(w);
+  });
+  flush();
+  // hold each line until the next one starts when the gap is short, so captions don't flicker
+  for (var i = 0; i < lines.length; i++) {
+    var nx = lines[i + 1];
+    if (nx && nx.start - lines[i].end < 0.35) lines[i].end = nx.start;
+    if (lines[i].end - lines[i].start < 0.35) lines[i].end = round3(lines[i].start + 0.35);
+    if (nx && lines[i].end > nx.start) lines[i].end = nx.start;
+  }
+  return lines;
+}
+
+// whisper.cpp --output-json-full (with -ml 1 -sow: one entry per word) -> [{w, s, e, p}]
+function whisperWords(json, offset) {
+  var off = offset || 0, out = [];
+  (json.transcription || []).forEach(function (seg) {
+    var w = String(seg.text || '').trim();
+    if (!w || /^\[.*\]$|^\(.*\)$/.test(w)) return;          // [MUSIC], (laughs)
+    var toks = (seg.tokens || []).filter(function (t) { return t.text && !/^\[_/.test(t.text) && String(t.text).trim(); });
+    var p = toks.length ? Math.min.apply(null, toks.map(function (t) { return typeof t.p === 'number' ? t.p : 1; })) : 1;
+    out.push({ w: w, s: seg.offsets.from / 1000 + off, e: seg.offsets.to / 1000 + off, p: p });
+  });
+  return out;
+}
+
+module.exports = { parse: parse, chunk: chunk, toSrt: toSrt, toSec: toSec, fromWords: fromWords, whisperWords: whisperWords, parseFixes: parseFixes, applyFixes: applyFixes, DEFAULT_FIXES: DEFAULT_FIXES };

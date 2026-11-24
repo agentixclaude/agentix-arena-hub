@@ -91,46 +91,40 @@
 
 <!-- TEXT -->
 <main class="tab" id="tab-text" hidden>
-  <section>
-    <div class="cap"><span>Captions from</span></div>
-    <div class="seg" id="tsrc"><button data-v="srt">SRT file</button><button data-v="captions">Caption track</button><button data-v="line">My line</button></div>
-    <div id="tsrcsrt" class="srcpane">
-      <div id="tsrtbox" class="dropzone slim" tabindex="0"><b id="tsrtname"></b><span>.srt or .vtt · drop a .mogrt here to use it as the style</span></div>
-      <div class="row opts"><span class="muted">Start at</span><div class="seg small" id="tat"><button data-v="zero">Sequence start</button><button data-v="playhead">Playhead</button></div></div>
+  <section class="tauto">
+    <button id="tauto" class="primary big">Auto captions</button>
+    <div class="row autoopts">
+      <div class="seg small" id="trange"><button data-v="all" class="on">Whole</button><button data-v="inout">In–Out</button></div>
+      <select id="ttrack"><option value="-1">Voice: auto</option></select>
+      <select id="tmodel"><option value="best">Accurate</option><option value="fast">Fast</option></select>
     </div>
-    <div id="tsrccap" class="srcpane" hidden>
-      <div class="row spread"><span class="muted">Reads the open sequence's caption track (saves the project first).</span><button id="tcapread" class="ghost">Read captions</button></div>
+    <div class="row others"><span class="muted">or</span><button class="link" id="tsrt">Load SRT</button><span class="muted">·</span><button class="link" id="tcapread">Use caption track</button></div>
+  </section>
+  <section class="tmain grow">
+    <div class="pvcol">
+      <canvas id="tpv" width="216" height="384"></canvas>
+      <div class="row spread"><span class="muted" id="tpvnote"></span><button class="link" id="tpvnext" title="Another photo">↻</button></div>
+      <div class="props slim">
+        <label>Size</label><div class="ctl"><input type="range" id="tpct" min="40" max="250" step="5"><span class="val" id="tpctv"></span></div>
+        <label>Position</label><div class="ctl"><input type="range" id="toffs" min="-60" max="20" step="1"><span class="val" id="toffv"></span></div>
+      </div>
     </div>
-    <div id="tsrcline" class="srcpane" hidden>
-      <textarea id="tline" rows="2">Clone yourself in one day</textarea>
-      <div class="props"><label>Duration</label><div class="ctl"><input type="range" id="tdur" min="0.5" max="10" step="0.5"><span class="val" id="tdurv"></span></div></div>
+    <div class="linecol">
+      <div class="cap"><span id="tcount">Captions</span><button class="link end chk" id="tcheck" hidden></button></div>
+      <div class="list clines" id="tlines"></div>
+      <div class="row lineopts">
+        <span class="muted">Words / line</span><input type="range" id="twords" min="1" max="8" step="1"><span class="val" id="twordsv"></span>
+        <button id="tupper" class="ghost tog" title="ALL CAPS">AA</button>
+      </div>
     </div>
   </section>
-  <section>
-    <div class="cap"><span>One line per caption</span></div>
-    <div class="props" id="topts"></div>
-  </section>
-  <section class="grow">
-    <div class="cap"><span>Lines</span><span class="end" id="tcount"></span></div>
-    <div class="list clines" id="tlines"></div>
-  </section>
-  <section>
-    <div class="cap"><span>Output</span></div>
-    <div class="seg" id="tout"><button data-v="graphics">Graphics text clips</button><button data-v="track">Caption track</button></div>
-    <div id="tgfx" class="props outpane">
-      <label>Style</label><div class="ctl"><select id="ttpl"></select><button id="ttplpick" class="ghost">Choose…</button></div>
-    </div>
-    <div id="tcapnote" class="note" hidden>Native Premiere captions: edit text in the Text panel, and select them all to restyle together in Essential Graphics.</div>
-  </section>
-  <section id="tadjust">
-    <div class="cap"><span>Size &amp; position</span></div>
-    <div class="props">
-      <label>Size</label><div class="ctl"><input type="range" id="tpct" min="40" max="250" step="5"><span class="val" id="tpctv"></span></div>
-      <label>Position</label><div class="ctl"><input type="range" id="toffs" min="-45" max="45" step="1"><span class="val" id="toffv"></span></div>
-    </div>
-    <div class="note" id="tadjnote"></div>
-  </section>
+  <details class="fixes">
+    <summary>Spelling fixes <span class="muted">· brand words, applied automatically</span></summary>
+    <textarea id="tfixes" rows="5" spellcheck="false"></textarea>
+    <div class="row spread"><span class="muted">One rule per line: wrong, other wrong =&gt; Right</span><button class="link" id="tfixreset">Reset</button></div>
+  </details>
   <footer>
+    <div class="row stylerow"><span class="muted">Style</span><select id="ttpl"></select><button id="ttplpick" class="ghost">Choose…</button></div>
     <div class="progress" id="tprog" hidden><div></div></div>
     <div class="actions">
       <button id="tplace" class="primary">Place</button>

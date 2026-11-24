@@ -484,3 +484,42 @@ function ahDeleteMedia(filePath) {
         return '{"removed":' + hits.length + '}';
     } catch (e) { return ahErr(e); }
 }
+
+/* ---------- Text: auto captions — the voice track's audio clips over the range (the panel mixes them with ffmpeg) ---------- */
+function ahAudioClips(useInOut, track) {
+    try {
+        var s = app.project.activeSequence;
+        if (!s) { return '{"error":"Open a sequence first."}'; }
+        var TICKS = 254016000000, a = 0, b = Number(s.end) / TICKS;
+        if (useInOut) {
+            try { a = s.getInPointAsTime().seconds; b = s.getOutPointAsTime().seconds; } catch (e1) {}
+            if (!(b > a)) { return '{"error":"Set In and Out points on the sequence, or use Whole sequence."}'; }
+        }
+        var tracks = [], t, j;
+        for (t = 0; t < s.audioTracks.numTracks; t++) {
+            var n = 0, tr = s.audioTracks[t], muted = false;
+            try { muted = tr.isMuted(); } catch (e2) {}
+            for (j = 0; j < tr.clips.numItems; j++) { if (tr.clips[j].end.seconds > a && tr.clips[j].start.seconds < b) { n++; } }
+            tracks.push('{"i":' + t + ',"name":"A' + (t + 1) + '","clips":' + n + ',"muted":' + muted + '}');
+        }
+        if (track < 0) {        // default: the first unmuted track that has clips in the range
+            for (t = 0; t < s.audioTracks.numTracks; t++) { var tt = s.audioTracks[t], m = false; try { m = tt.isMuted(); } catch (e3) {} if (!m) { for (j = 0; j < tt.clips.numItems; j++) { if (tt.clips[j].end.seconds > a && tt.clips[j].start.seconds < b) { track = t; break; } } } if (track >= 0) { break; } }
+        }
+        var clips = [];
+        if (track >= 0 && track < s.audioTracks.numTracks) {
+            var at = s.audioTracks[track];
+            for (j = 0; j < at.clips.numItems; j++) {
+                var c = at.clips[j], st = c.start.seconds, en = c.end.seconds;
+                if (en <= a || st >= b) { continue; }
+                var mp = ''; try { mp = c.projectItem.getMediaPath(); } catch (e4) {}
+                if (!mp) { continue; }
+                var sp = 1; try { sp = c.getSpeed(); } catch (e5) {}
+                clips.push('{"path":"' + ahEsc(mp) + '","start":' + st + ',"end":' + en + ',"in":' + c.inPoint.seconds + ',"speed":' + (sp || 1) + '}');
+            }
+        }
+        return '{"a":' + a + ',"b":' + b + ',"track":' + track + ',"tracks":[' + tracks.join(',') + '],"clips":[' + clips.join(',') + ']}';
+    } catch (e) { return ahErr(e); }
+}
+function ahSeek(sec) {
+    try { app.project.activeSequence.setPlayerPosition(String(Math.round(sec * 254016000000))); return 'OK'; } catch (e) { return 'ERR:' + e.toString(); }
+}
