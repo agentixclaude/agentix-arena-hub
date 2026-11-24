@@ -8,7 +8,7 @@ function ahInfo() {
         if (!p || !p.path) { return '{"open":false}'; }
         var s = p.activeSequence, sel = s ? ahSelected(s).length : 0, w = 0, h = 0, fr = 0;
         if (s) { try { w = s.frameSizeHorizontal; h = s.frameSizeVertical; fr = s.getSettings().videoFrameRate.seconds; } catch (e1) {} }
-        return '{"open":true,"project":"' + ahEsc(p.name) + '","path":"' + ahEsc(p.path) + '","sequence":"' + (s ? ahEsc(s.name) : '') + '","selected":' + sel +
+        return '{"open":true,"project":"' + ahEsc(p.name) + '","path":"' + ahEsc(p.path) + '","seqId":"' + (s ? ahEsc(s.sequenceID) : '') + '","sequence":"' + (s ? ahEsc(s.name) : '') + '","selected":' + sel +
             ',"playhead":' + (s ? s.getPlayerPosition().seconds : 0) + ',"width":' + (w || 0) + ',"height":' + (h || 0) + ',"frame":' + (fr || 0) + '}';
     } catch (e) { return ahErr(e); }
 }
@@ -227,4 +227,73 @@ function ahFrame(outBase) {
         q.exportFrameJPEG(q.CTI.timecode, outBase);
         return 'OK:jpg';
     } catch (e) { return 'ERR:' + e.toString(); }
+}
+
+/* ---------- Text tab: save, place renders over a time range, read Graphics text clips ---------- */
+function ahSave() {
+    try { if (!app.project || !app.project.path) { return '{"error":"Open a project first."}'; } app.project.save(); return '{"ok":true,"path":"' + ahEsc(app.project.path) + '"}'; }
+    catch (e) { return ahErr(e); }
+}
+function ahRangeFree(tr, a, b) {
+    for (var j = 0; j < tr.clips.numItems; j++) { var c = tr.clips[j]; if (c.start.seconds < b - 0.001 && c.end.seconds > a + 0.001) { return false; } }
+    return true;
+}
+function ahPlace(filePath, startSec, endSec, minTrack, binName) {
+    try {
+        var s = app.project.activeSequence;
+        if (!s) { return '{"error":"Open a sequence first."}'; }
+        var bin = ahBin(binName || 'Arena Text'), item = ahFindIn(bin, filePath);
+        if (!item) {
+            if (!app.project.importFiles([filePath], true, bin, false)) { return '{"error":"Premiere could not import the render."}'; }
+            item = ahFindIn(bin, filePath);
+        }
+        if (!item) { return '{"error":"The render was imported but not found in the bin."}'; }
+        var t = -1, k;
+        for (k = Math.max(0, minTrack); k < s.videoTracks.numTracks; k++) { if (ahRangeFree(s.videoTracks[k], startSec, endSec)) { t = k; break; } }
+        if (t < 0) {      // no room: add a video track on top
+            try { app.enableQE(); qe.project.getActiveSequence().addTracks(1, s.videoTracks.numTracks, 0); } catch (e1) {}
+            s = app.project.activeSequence;
+            k = s.videoTracks.numTracks - 1;
+            if (k >= minTrack && ahRangeFree(s.videoTracks[k], startSec, endSec)) { t = k; }
+        }
+        if (t < 0) { return '{"error":"No free video track above. Add an empty track and try again."}'; }
+        s.videoTracks[t].overwriteClip(item, startSec);
+        return '{"ok":true,"name":"' + ahEsc(item.name) + '","placed":"V' + (t + 1) + '"}';
+    } catch (e) { return ahErr(e); }
+}
+function ahClipText(c) {
+    var txt = '', i, j;
+    try {
+        for (i = 0; i < c.components.numItems && !txt; i++) {
+            var comp = c.components[i];
+            for (j = 0; j < comp.properties.numItems; j++) {
+                var pr = comp.properties[j];
+                if (!/source text|^text$/i.test(pr.displayName)) { continue; }
+                var v = ''; try { v = String(pr.getValue()); } catch (e1) {}
+                var m = v.match(/"textEditValue"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                txt = m ? eval('"' + m[1] + '"') : (v && v.charAt(0) !== '{' ? v : '');
+                if (txt) { break; }
+            }
+        }
+    } catch (e) {}
+    if (!txt) { try { var mg = c.getMGTComponent(); for (j = 0; mg && j < mg.properties.numItems; j++) { var v2 = String(mg.properties[j].getValue()); var m2 = v2.match(/"textEditValue"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (m2) { txt = eval('"' + m2[1] + '"'); break; } } } catch (e2) {} }
+    return txt;
+}
+function ahTextClips() {
+    try {
+        var s = app.project.activeSequence;
+        if (!s) { return '{"error":"Open a sequence first."}'; }
+        var sel = ahSelected(s), out = [];
+        for (var i = 0; i < sel.length; i++) {
+            var c = sel[i].clip, txt = ahClipText(c), graphic = false;
+            for (var k = 0; k < c.components.numItems; k++) { if (/^(text|graphic)/i.test(c.components[k].displayName)) { graphic = true; break; } }
+            if (!txt && graphic) { txt = c.name; }      // a graphic whose text the API hides: its clip name is the text by default
+            if (!txt) { continue; }
+            out.push('{"track":' + sel[i].track + ',"index":' + sel[i].index + ',"start":' + c.start.seconds + ',"end":' + c.end.seconds + ',"text":"' + ahEsc(txt) + '"}');
+        }
+        return '{"clips":[' + out.join(',') + '],"selected":' + sel.length + '}';
+    } catch (e) { return ahErr(e); }
+}
+function ahDisable(track, index) {
+    try { app.project.activeSequence.videoTracks[track].clips[index].disabled = true; return 'OK'; } catch (e) { return 'ERR:' + e.toString(); }
 }

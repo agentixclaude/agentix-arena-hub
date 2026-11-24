@@ -98,7 +98,7 @@
     var L = opt.layout || layout(ctx, W, H, text, P, opt.scale);
     if (!L.n) return L;
     var dur = Math.max(0.5, P.dur), sp = P.speed;
-    var out = t > dur - 0.3 ? clamp((dur - t) / 0.3, 0, 1) : 1;      // shared 0.3 s fade-out
+    var out = !P.noFade && t > dur - 0.3 ? clamp((dur - t) / 0.3, 0, 1) : 1;      // shared 0.3 s fade-out (off when the next caption follows straight on)
     ctx.save(); ctx.globalAlpha = out;
     var words = []; L.lines.forEach(function (ln) { ln.words.forEach(function (w) { words.push(w); }); });
     var wd = Math.max(0.12, (dur - 0.6) / L.n), active = clamp(Math.floor((t - 0.15) / wd), 0, L.n - 1);

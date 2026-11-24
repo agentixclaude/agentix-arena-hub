@@ -547,11 +547,12 @@
       });
       return { id: el.getAttribute('data-id'), cv: el.querySelector('canvas'), ctx: el.querySelector('canvas').getContext('2d'), el: el };
     });
-    renderProps(); paintBg(); relayout();
+    renderProps(); paintBg(); relayout(); paintSource(true);
     if (!frame.url) setFrame(sampleFrame());
     if (!text.raf) loop();
   }
   function lineText() { return $('tline').value.trim() || 'Your line here'; }
+  function previewText() { return text.src !== 'line' && text.preview ? text.preview : lineText(); }
   function relayout() {
     var wh = frameWH(), cv = $('tbig'), k = Math.min(1, 560 / Math.max(wh[0], wh[1]));
     if (cv.width !== Math.round(wh[0] * k) || cv.height !== Math.round(wh[1] * k)) { cv.width = Math.round(wh[0] * k); cv.height = Math.round(wh[1] * k); }
@@ -576,7 +577,7 @@
   function loop() {
     text.raf = requestAnimationFrame(loop);
     if ($('tab-text').hidden) return;
-    var P = text.P, span = P.dur + 0.6, t = ((performance.now() - text.t0) / 1000) % span, line = lineText();
+    var P = text.P, span = P.dur + 0.6, t = ((performance.now() - text.t0) / 1000) % span, line = previewText();
     var wh = frameWH(), cv = $('tbig'), ctx = cv.getContext('2d');
     ctx.setTransform(text.k, 0, 0, text.k, 0, 0); drawBg(ctx, wh[0], wh[1]);
     TXF.draw(ctx, wh[0], wh[1], Math.min(t, P.dur), text.style, line, P);
@@ -590,6 +591,10 @@
   $('tdir').addEventListener('click', async function () { await refresh(); cp.execFile('/usr/bin/open', [assetDir('Text')]); });
 
   // ---- render: frames -> ffmpeg -> ProRes 4444 with alpha -> timeline ----
+  // Sources: My line (at the playhead) · Captions (the sequence's caption track, read from the saved project)
+  //          · Text clips (selected Graphics / text clips, each re-rendered in place on the track above).
+  var PRC = nodeReq(path.join(EXT_DIR, 'lib', 'prcaptions.js'));
+  text.src = load('ah:tsrc', 'line'); text.preview = null;
   function fpsOf(sec) {
     var f = sec ? 1 / sec : 30, near = function (x) { return Math.abs(f - x) < 0.02; };
     if (near(23.976)) return '24000/1001'; if (near(29.97)) return '30000/1001'; if (near(59.94)) return '60000/1001';
@@ -603,38 +608,107 @@
       }, 'image/png');
     });
   }
+  function styleName() { return (TXF.STYLES.filter(function (s) { return s.id === text.style; })[0] || {}).name || text.style; }
+  // segs: [{start, end, text}] in seconds from the file's first frame
+  async function renderSegs(segs, total, label, progLabel) {
+    var ff = which('ffmpeg'); if (!ff) throw new Error('ffmpeg is needed to render (brew install ffmpeg).');
+    var P = Object.assign({}, text.P), W = info.width, H = info.height, fps = fpsOf(info.frame), fpsN = info.frame ? 1 / info.frame : 30;
+    var n = Math.max(1, Math.round(total * fpsN)), st = text.style, bar = $('tprog').firstElementChild;
+    var out = uniq(assetDir('Text'), safeName(styleName() + ' - ' + label) + '-' + stamp(), '.mov');
+    await document.fonts.load(P.weight + ' 40px "' + P.font + '"');
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var ctx = cv.getContext('2d');
+    var proc = cp.spawn(ff, ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', fps, '-c:v', 'png', '-i', '-',
+      '-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', '-alpha_bits', '16', '-vendor', 'apl0', out]);
+    var errText = ''; proc.stderr.on('data', function (d) { errText += d; });
+    var ended = new Promise(function (res) { proc.on('close', function (code) { res(code); }); });
+    var empty = null, k = 0;
+    segs.forEach(function (sg, i) { sg.noFade = !!(segs[i + 1] && segs[i + 1].start - sg.end < 0.12); });
+    for (var i = 0; i < n; i++) {
+      var T = i / fpsN;
+      while (k < segs.length && segs[k].end <= T) k++;
+      var sg = segs[k] && segs[k].start <= T ? segs[k] : null, buf;
+      if (!sg) { if (!empty) { ctx.clearRect(0, 0, W, H); empty = await blobBuf(cv); } buf = empty; }
+      else {
+        ctx.clearRect(0, 0, W, H);
+        TXF.draw(ctx, W, H, T - sg.start, st, sg.text, Object.assign({}, P, { dur: Math.max(0.5, sg.end - sg.start), noFade: sg.noFade }));
+        buf = await blobBuf(cv);
+      }
+      if (!proc.stdin.write(buf)) await new Promise(function (r) { proc.stdin.once('drain', r); });
+      if (i % 5 === 0) { bar.style.width = Math.round((i + 1) / n * 100) + '%'; setStatus('tstatus', (progLabel || 'Rendering') + ' · frame ' + (i + 1) + ' of ' + n); }
+    }
+    proc.stdin.end();
+    var code = await ended;
+    bar.style.width = '100%';
+    if (code !== 0 || !fs.existsSync(out)) throw new Error('ffmpeg failed: ' + (errText.split('\n').filter(Boolean).pop() || 'code ' + code));
+    return out;
+  }
+  async function readCaptionCues() {
+    var sv = await jsx('ahSave()');                   // captions are read from the saved project file
+    if (sv.error) throw new Error(sv.error);
+    var r = PRC.readCaptions(sv.path, info.seqId);
+    if (!r.tracks.length) throw new Error('This sequence has no caption track. Create captions (Text panel › Transcript › Create captions) first.');
+    return r.tracks[0];
+  }
+  async function paintSource(quiet) {      // quiet: on tab open, never save the project by itself
+    Array.prototype.forEach.call(document.querySelectorAll('#tsrc button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === text.src); });
+    $('toffrow').hidden = text.src !== 'clips';
+    $('trender').textContent = text.src === 'captions' ? 'Apply to captions' : text.src === 'clips' ? 'Apply to text clips' : 'Render to timeline';
+    text.preview = null; setStatus('tstatus', '');
+    if (text.src === 'line' || busy) return;
+    if (quiet) { setStatus('tstatus', text.src === 'captions' ? 'Captions: press Apply to read the caption track (saves the project first).' : 'Select Graphics / text clips, then Apply.'); return; }
+    await refresh();
+    try {
+      if (text.src === 'captions') {
+        if (!info.sequence) return setStatus('tstatus', 'Open the sequence with the captions.', 'warn');
+        var cues = await readCaptionCues();
+        text.preview = cues[0].text;
+        setStatus('tstatus', cues.length + ' captions found (' + fmtT(cues[0].start) + ' – ' + fmtT(cues[cues.length - 1].end) + '). Preview shows the first one.', 'ok');
+      } else {
+        var r = await jsx('ahTextClips()');
+        if (r.error) return setStatus('tstatus', r.error, 'warn');
+        if (!r.clips.length) return setStatus('tstatus', 'Select Graphics / text clips in the timeline' + (r.selected ? ' (the ' + r.selected + ' selected have no text).' : '.'), 'warn');
+        text.preview = r.clips[0].text;
+        setStatus('tstatus', r.clips.length + ' text clip' + (r.clips.length > 1 ? 's' : '') + ' selected. Preview shows the first.', 'ok');
+      }
+    } catch (e) { setStatus('tstatus', e.message, 'bad'); }
+  }
+  function fmtT(s) { var m = Math.floor(s / 60), r = Math.floor(s - m * 60); return m + ':' + (r < 10 ? '0' : '') + r; }
+  segValue('tsrc', function (v) { text.src = v; store('ah:tsrc', v); paintSource(); });
+
   $('trender').addEventListener('click', async function () {
     if (busy) return;
     await refresh();
-    if (!info.sequence) { setStatus('tstatus', 'Open a sequence first; the text is rendered at its frame size.', 'warn'); return; }
-    var ff = which('ffmpeg'); if (!ff) { setStatus('tstatus', 'ffmpeg is needed to render (brew install ffmpeg).', 'bad'); return; }
-    busy = true; $('trender').disabled = true; $('tprog').hidden = false;
-    var bar = $('tprog').firstElementChild; bar.style.width = '0';
-    var P = Object.assign({}, text.P), W = info.width, H = info.height, fps = fpsOf(info.frame), fpsN = info.frame ? 1 / info.frame : 30;
-    var n = Math.max(1, Math.round(P.dur * fpsN)), line = lineText(), st = text.style;
-    var name = (TXF.STYLES.filter(function (s) { return s.id === st; })[0] || {}).name || st;
-    var out = uniq(assetDir('Text'), safeName(name + ' - ' + line.split(/\s+/).slice(0, 4).join(' ')) + '-' + stamp(), '.mov');
+    if (!info.sequence) { setStatus('tstatus', 'Open a sequence first; text renders at its frame size.', 'warn'); return; }
+    busy = true; $('trender').disabled = true; $('tprog').hidden = false; $('tprog').firstElementChild.style.width = '0';
     try {
-      await document.fonts.load(P.weight + ' 40px "' + P.font + '"');
-      var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var ctx = cv.getContext('2d');
-      var proc = cp.spawn(ff, ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', fps, '-c:v', 'png', '-i', '-',
-        '-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', '-alpha_bits', '16', '-vendor', 'apl0', out]);
-      var errText = ''; proc.stderr.on('data', function (d) { errText += d; });
-      var ended = new Promise(function (res) { proc.on('close', function (code) { res(code); }); });
-      for (var i = 0; i < n; i++) {
-        ctx.clearRect(0, 0, W, H);
-        TXF.draw(ctx, W, H, i / fpsN, st, line, P);
-        var buf = await blobBuf(cv);
-        if (!proc.stdin.write(buf)) await new Promise(function (r) { proc.stdin.once('drain', r); });
-        bar.style.width = Math.round((i + 1) / n * 100) + '%';
-        if (i % 6 === 0) setStatus('tstatus', 'Rendering frame ' + (i + 1) + ' of ' + n + '…');
+      if (text.src === 'line') {
+        var line = lineText(), out = await renderSegs([{ start: 0, end: text.P.dur, text: line }], text.P.dur, line.split(/\s+/).slice(0, 4).join(' '));
+        var r = await jsx('ahImport(' + q(out) + ',true,"Arena Text")');
+        if (r.error) throw new Error(r.error);
+        setStatus('tstatus', styleName() + ' rendered → Arena Text' + (r.placed ? ', on ' + r.placed + ' at the playhead' : '') + (r.note ? '. ' + r.note : ''), r.note ? 'warn' : 'ok');
+      } else if (text.src === 'captions') {
+        setStatus('tstatus', 'Saving and reading the captions…');
+        var cues = await readCaptionCues(), t0 = cues[0].start, t1 = cues[cues.length - 1].end;
+        var segs = cues.map(function (c) { return { start: c.start - t0, end: c.end - t0, text: c.text }; });
+        var outC = await renderSegs(segs, t1 - t0, 'captions', cues.length + ' captions');
+        var rc = await jsx('ahPlace(' + q(outC) + ',' + t0 + ',' + t1 + ',1,"Arena Text")');
+        if (rc.error) throw new Error(rc.error);
+        setStatus('tstatus', cues.length + ' captions styled as ' + styleName() + ' on ' + rc.placed + '. Hide the caption track (eye icon) so they don\'t double up.', 'ok');
+      } else {
+        var tc = await jsx('ahTextClips()');
+        if (tc.error) throw new Error(tc.error);
+        if (!tc.clips.length) throw new Error('Select Graphics / text clips in the timeline first.');
+        var done = 0, placed = [];
+        for (var i = 0; i < tc.clips.length; i++) {
+          var c = tc.clips[i], d = c.end - c.start;
+          var o = await renderSegs([{ start: 0, end: d, text: c.text }], d, c.text.split(/\s+/).slice(0, 4).join(' '), 'Clip ' + (i + 1) + ' of ' + tc.clips.length);
+          var rp = await jsx('ahPlace(' + q(o) + ',' + c.start + ',' + c.end + ',' + (c.track + 1) + ',"Arena Text")');
+          if (rp.error) throw new Error(rp.error);
+          if ($('toff').checked) await evalJsx('ahDisable(' + c.track + ',' + c.index + ')');
+          done++; placed.push(rp.placed);
+        }
+        setStatus('tstatus', done + ' text clip' + (done > 1 ? 's' : '') + ' re-styled as ' + styleName() + ' (' + placed.filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') + ')' + ($('toff').checked ? ', originals turned off.' : '.'), 'ok');
       }
-      proc.stdin.end();
-      var code = await ended;
-      if (code !== 0 || !fs.existsSync(out)) throw new Error('ffmpeg failed: ' + (errText.split('\n').filter(Boolean).pop() || 'code ' + code));
-      var r = await jsx('ahImport(' + q(out) + ',true,"Arena Text")');
-      if (r.error) throw new Error(r.error);
-      setStatus('tstatus', name + ' rendered (' + P.dur + ' s, alpha) → Arena Text' + (r.placed ? ', placed on ' + r.placed : '') + (r.note ? '. ' + r.note : ''), r.note ? 'warn' : 'ok');
     } catch (e) { setStatus('tstatus', e.message || String(e), 'bad'); }
     busy = false; $('trender').disabled = false; setTimeout(function () { $('tprog').hidden = true; }, 800);
   });

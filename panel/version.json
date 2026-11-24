@@ -1,1 +1,1 @@
-{ "version": "0.2.0", "notes": "Drop takes any file or link into Assets/Drops; Text styles with properties render to the timeline; 31 CapCut-style effects" }
+{ "version": "0.3.0", "notes": "Text styles now apply to the Premiere caption track and to selected Graphics text clips" }

@@ -186,3 +186,5 @@ h1::before { width: 3px; height: 13px; border-radius: 1px; box-shadow: none; }
 .pv-card-shadow .fv { background: #20252d; }
 .pv-card-shadow .im { inset: 14% 14%; border-radius: 3px; box-shadow: 0 8px 16px rgba(0, 0, 0, .6); }
 .pv-flip .im { transform: scaleX(-1); }
+#tsrc { flex: 1; }
+#toffrow { font-size: 11px; }
