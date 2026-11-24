@@ -97,18 +97,7 @@ h1::before { width: 3px; height: 13px; border-radius: 1px; box-shadow: none; }
 @keyframes mOut    { 0%, 55% { transform: translateX(0); } 80%, 100% { transform: translateX(-115%); } }
 
 /* ---------- Text ---------- */
-.stage { position: relative; display: flex; justify-content: center; align-items: center; height: 260px; background: #0b0c0e; border: 1px solid var(--line-soft); border-radius: var(--r); overflow: hidden; }
-.stage canvas { max-width: 100%; max-height: 100%; display: block; }
-.stage.check canvas { background: repeating-conic-gradient(#2a2d32 0% 25%, #1f2226 0% 50%) 0 0 / 16px 16px; }
-.stagebar { margin: 6px 0 7px; }
-.stagebar .seg { width: 170px; }
 #tline { width: 100%; min-height: 44px; }
-.sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
-.scard { display: flex; flex-direction: column; gap: 3px; padding: 3px; border: 1px solid var(--line-soft); border-radius: var(--r); background: var(--bg-sunk); cursor: pointer; transition: border-color .14s ease-out; }
-.scard:hover { border-color: var(--hover-line); }
-.scard.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.scard canvas { width: 100%; aspect-ratio: 16 / 7; border-radius: 3px; background: #0b0c0e; display: block; }
-.scard .n { padding: 0 3px 2px; font-size: 11px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .props { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 6px 10px; align-items: center; }
 .props > label { color: var(--text-3); font-size: 11px; }
 .props .ctl { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -197,3 +186,20 @@ h1::before { width: 3px; height: 13px; border-radius: 1px; box-shadow: none; }
 #tab-tools .props select { height: 26px; }
 #mtype button { padding: 0 4px; font-size: 11px; }
 .tabs button { padding: 0 8px; }
+
+/* Text: editable captions */
+.srcpane { margin-top: 7px; }
+.dropzone.slim { height: 54px; cursor: pointer; text-align: center; }
+.dropzone.slim.has b { color: var(--accent); }
+.seg.small { width: 210px; }
+.outpane { margin-top: 7px; }
+.outpane select { flex: 1; min-width: 0; }
+.clines { overflow-y: auto; min-height: 90px; }
+.cline { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center; padding: 3px 9px; border-top: 1px solid var(--row-line); }
+.cline:first-child { border-top: 0; }
+.cline .tc { color: var(--text-3); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.cline input { height: 22px; min-width: 0; background: transparent; border: 1px solid transparent; border-radius: 3px; color: var(--text); font: inherit; padding: 0 5px; }
+.cline input:hover { border-color: var(--line-soft); }
+.cline input:focus { border-color: var(--accent); background: var(--bg-sunk); outline: none; }
+.clines .empty { padding: 14px 9px; color: var(--text-3); font-size: 11px; }
+#tsrcline .props { margin-top: 6px; }

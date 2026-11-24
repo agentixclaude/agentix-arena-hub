@@ -243,66 +243,6 @@ function ahRangeFree(tr, a, b) {
     for (var j = 0; j < tr.clips.numItems; j++) { var c = tr.clips[j]; if (c.start.seconds < b - 0.001 && c.end.seconds > a + 0.001) { return false; } }
     return true;
 }
-function ahPlace(filePath, startSec, endSec, minTrack, binName) {
-    try {
-        var s = app.project.activeSequence;
-        if (!s) { return '{"error":"Open a sequence first."}'; }
-        var bin = ahBin(binName || 'Arena Text'), item = ahFindIn(bin, filePath);
-        if (!item) {
-            if (!app.project.importFiles([filePath], true, bin, false)) { return '{"error":"Premiere could not import the render."}'; }
-            item = ahFindIn(bin, filePath);
-        }
-        if (!item) { return '{"error":"The render was imported but not found in the bin."}'; }
-        var t = -1, k;
-        for (k = Math.max(0, minTrack); k < s.videoTracks.numTracks; k++) { if (ahRangeFree(s.videoTracks[k], startSec, endSec)) { t = k; break; } }
-        if (t < 0) {      // no room: add a video track on top
-            try { app.enableQE(); qe.project.getActiveSequence().addTracks(1, s.videoTracks.numTracks, 0); } catch (e1) {}
-            s = app.project.activeSequence;
-            k = s.videoTracks.numTracks - 1;
-            if (k >= minTrack && ahRangeFree(s.videoTracks[k], startSec, endSec)) { t = k; }
-        }
-        if (t < 0) { return '{"error":"No free video track above. Add an empty track and try again."}'; }
-        s.videoTracks[t].overwriteClip(item, startSec);
-        return '{"ok":true,"name":"' + ahEsc(item.name) + '","placed":"V' + (t + 1) + '"}';
-    } catch (e) { return ahErr(e); }
-}
-function ahClipText(c) {
-    var txt = '', i, j;
-    try {
-        for (i = 0; i < c.components.numItems && !txt; i++) {
-            var comp = c.components[i];
-            for (j = 0; j < comp.properties.numItems; j++) {
-                var pr = comp.properties[j];
-                if (!/source text|^text$/i.test(pr.displayName)) { continue; }
-                var v = ''; try { v = String(pr.getValue()); } catch (e1) {}
-                var m = v.match(/"textEditValue"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-                txt = m ? eval('"' + m[1] + '"') : (v && v.charAt(0) !== '{' ? v : '');
-                if (txt) { break; }
-            }
-        }
-    } catch (e) {}
-    if (!txt) { try { var mg = c.getMGTComponent(); for (j = 0; mg && j < mg.properties.numItems; j++) { var v2 = String(mg.properties[j].getValue()); var m2 = v2.match(/"textEditValue"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (m2) { txt = eval('"' + m2[1] + '"'); break; } } } catch (e2) {} }
-    return txt;
-}
-function ahTextClips() {
-    try {
-        var s = app.project.activeSequence;
-        if (!s) { return '{"error":"Open a sequence first."}'; }
-        var sel = ahSelected(s), out = [];
-        for (var i = 0; i < sel.length; i++) {
-            var c = sel[i].clip, txt = ahClipText(c), graphic = false;
-            for (var k = 0; k < c.components.numItems; k++) { if (/^(text|graphic)/i.test(c.components[k].displayName)) { graphic = true; break; } }
-            if (!txt && graphic) { txt = c.name; }      // a graphic whose text the API hides: its clip name is the text by default
-            if (!txt) { continue; }
-            out.push('{"track":' + sel[i].track + ',"index":' + sel[i].index + ',"start":' + c.start.seconds + ',"end":' + c.end.seconds + ',"text":"' + ahEsc(txt) + '"}');
-        }
-        return '{"clips":[' + out.join(',') + '],"selected":' + sel.length + '}';
-    } catch (e) { return ahErr(e); }
-}
-function ahDisable(track, index) {
-    try { app.project.activeSequence.videoTracks[track].clips[index].disabled = true; return 'OK'; } catch (e) { return 'ERR:' + e.toString(); }
-}
-
 /* ---------- Tools: smart place over the selected section (adjustment layers, mattes, overlays) ----------
    Range = sequence In/Out, or the selected clips (one range over all, or one per clip).
    Track = first video track above the selected clips that is empty across the whole range; adds a track when all are busy. */
@@ -403,5 +343,128 @@ function ahAddStill(filePath, source, perClip, binName) {
         if (!item) { app.project.importFiles([filePath], true, bin, false); item = ahFindIn(bin, filePath); }
         if (!item) { return '{"error":"Could not import the matte."}'; }
         return '{"ok":true,' + ahPlacedJson(ahPlaceRanges(item, r.ranges, true)) + '}';
+    } catch (e) { return ahErr(e); }
+}
+
+/* ---------- Text: editable captions ----------
+   Caption track: an SRT becomes a native Premiere caption track (edit / restyle every caption in Essential Graphics).
+   Graphics text: one Graphics clip per line from a .mogrt, text written into its Source Text, all on one free track. */
+function ahTrackFor(a, b, minTrack) {
+    try {
+        var s = app.project.activeSequence;
+        if (!s) { return '{"error":"Open a sequence first."}'; }
+        for (var k = Math.max(0, minTrack); k < s.videoTracks.numTracks; k++) { if (ahRangeFree(s.videoTracks[k], a, b)) { return '{"track":' + k + '}'; } }
+        try { app.enableQE(); qe.project.getActiveSequence().addTracks(1, s.videoTracks.numTracks, 0); } catch (e1) {}
+        s = app.project.activeSequence;
+        var t = s.videoTracks.numTracks - 1;
+        if (t >= minTrack && ahRangeFree(s.videoTracks[t], a, b)) { return '{"track":' + t + ',"added":true}'; }
+        return '{"error":"No free video track over the caption span. Add an empty track and try again."}';
+    } catch (e) { return ahErr(e); }
+}
+function ahCaptionTrack(srtPath) {
+    try {
+        var s = app.project.activeSequence;
+        if (!s) { return '{"error":"Open a sequence first."}'; }
+        var bin = ahBin('Arena Text'), item = ahFindIn(bin, srtPath);
+        if (!item) {
+            if (!app.project.importFiles([srtPath], true, bin, false)) { return '{"error":"Premiere could not import the SRT."}'; }
+            item = ahFindIn(bin, srtPath);
+        }
+        if (!item) { return '{"error":"The SRT was imported but not found in the Arena Text bin."}'; }
+        var fmt; try { fmt = Sequence.CAPTION_FORMAT_SUBTITLE; } catch (e1) {}
+        var ok = fmt !== undefined ? s.createCaptionTrack(item, 0, fmt) : s.createCaptionTrack(item, 0);
+        if (ok === false) { return '{"error":"Premiere refused to make a caption track from this SRT."}'; }
+        return '{"ok":true}';
+    } catch (e) { return ahErr(e); }
+}
+/* the Source Text parameter of a Graphics / MOGRT clip: {prop, value} */
+function ahTextParam(c) {
+    var comps = [], i, j;
+    try { var m = c.getMGTComponent(); if (m) { comps.push(m); } } catch (e) {}
+    for (i = 0; i < c.components.numItems; i++) { comps.push(c.components[i]); }
+    var fallback = null;
+    for (i = 0; i < comps.length; i++) {
+        for (j = 0; j < comps[i].properties.numItems; j++) {
+            var pr = comps[i].properties[j], v = '';
+            try { v = String(pr.getValue()); } catch (e2) {}
+            if (v.indexOf('"textEditValue"') >= 0) { return { prop: pr, value: v }; }
+            if (!fallback && /source text|text|title|caption|line/i.test(pr.displayName) && v && v.charAt(0) !== '{' && isNaN(+v)) { fallback = { prop: pr, value: v }; }
+        }
+    }
+    return fallback;
+}
+/* write text and / or font size; returns the size before the change (0 when the template has none) */
+function ahSetText(c, text, size) {
+    var tp = ahTextParam(c);
+    if (!tp) { return -1; }
+    if (tp.value.indexOf('"textEditValue"') < 0) { if (text !== null) { tp.prop.setValue(text, true); } return 0; }
+    var o = eval('(' + tp.value + ')'), before = 0;
+    if (o.fontSizeEditValue && o.fontSizeEditValue.length) { before = +o.fontSizeEditValue[0] || 0; }
+    if (text !== null) {
+        o.textEditValue = text;
+        for (var k in o) {          // one style run over the whole new text, so old run lengths can't cut it up
+            if (o.hasOwnProperty(k) && o[k] instanceof Array && o[k].length > 1 && /EditValue$|Value$/.test(k)) { o[k] = [o[k][0]]; }
+        }
+        if (o.fontTextRunLength) { o.fontTextRunLength = [text.length]; }
+    }
+    if (size && o.fontSizeEditValue) { o.fontSizeEditValue = [size]; }
+    tp.prop.setValue(ahJson(o), true);
+    return before;
+}
+function ahMotionProp(c, name) {
+    var m = ahComp(c, 'Motion') || ahComp(c, 'Vector Motion');
+    return ahProp(m, name);
+}
+/* lines: JSON [{s,e,t}] in sequence seconds. pct: size as % of the template (100 = as designed). */
+function ahCapBatch(mogrt, track, linesJson, pct) {
+    try {
+        var s = app.project.activeSequence;
+        if (!s) { return '{"error":"Open a sequence first."}'; }
+        var L = eval('(' + linesJson + ')'), placed = 0, textSet = 0, base = 0, unit = '', TICKS = 254016000000;
+        for (var i = 0; i < L.length; i++) {
+            var item = s.importMGT(mogrt, String(Math.round(L[i].s * TICKS)), track, 0);
+            if (!item) { continue; }
+            placed++;
+            try { item.end = ahT(L[i].e); } catch (e1) {}
+            var b = ahSetText(item, L[i].t, 0);
+            if (b >= 0) { textSet++; }
+            if (b > 0 && !unit) { base = b; unit = 'px'; }
+            if (!unit && b === 0) { unit = '%'; }
+            if (pct && pct !== 100) {
+                if (b > 0) { ahSetText(item, null, Math.round(b * pct / 100)); }
+                else { var sc = ahMotionProp(item, 'Scale'); if (sc) { sc.setValue(pct, true); } }
+            }
+        }
+        return '{"placed":' + placed + ',"textSet":' + textSet + ',"base":' + base + ',"unit":"' + (unit || '%') + '"}';
+    } catch (e) { return ahErr(e); }
+}
+/* restyle placed captions: the selected clips, else every clip on <track> inside a..b.
+   pct: size % of base (px templates) or Motion scale; off: vertical offset in % of frame height (0 = as designed). */
+function ahCapStyle(track, a, b, pct, base, off) {
+    try {
+        var s = app.project.activeSequence;
+        if (!s) { return '{"error":"Open a sequence first."}'; }
+        var list = [], sel = ahSelected(s), i;
+        for (i = 0; i < sel.length; i++) { list.push(sel[i].clip); }
+        var usedSel = list.length > 0;
+        if (!usedSel && track >= 0 && track < s.videoTracks.numTracks) {
+            var tr = s.videoTracks[track];
+            for (i = 0; i < tr.clips.numItems; i++) { var c = tr.clips[i]; if (c.start.seconds >= a - 0.01 && c.end.seconds <= b + 0.01) { list.push(c); } }
+        }
+        var done = 0, miss = 0;
+        for (i = 0; i < list.length; i++) {
+            var it = list[i], ok = false;
+            if (pct !== null) {
+                var cur = ahSetText(it, null, 0), want = base > 0 ? base : cur;
+                if (want > 0) { ahSetText(it, null, Math.round(want * pct / 100)); ok = true; }
+                else { var sc = ahMotionProp(it, 'Scale'); if (sc) { sc.setValue(pct, true); ok = true; } }
+            }
+            if (off !== null) {
+                var po = ahMotionProp(it, 'Position');
+                if (po) { var v = po.getValue(); if (v && v.length === 2) { po.setValue([v[0], 0.5 + off / 100], true); ok = true; } }
+            }
+            if (ok) { done++; } else { miss++; }
+        }
+        return '{"done":' + done + ',"miss":' + miss + ',"selection":' + usedSel + '}';
     } catch (e) { return ahErr(e); }
 }

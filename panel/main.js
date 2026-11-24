@@ -1,7 +1,7 @@
 /* Agentix Arena Hub — panel logic.
    Drop: clipboard / file / folder / any link -> <project>/Assets/Drops -> "Arena Drops" bin (+ playhead).
    Templates: the team's picks from the Adobe template library.
-   Motion / Effects: catalog recipes on the selected clips. Text: canvas caption styles rendered to ProRes 4444 with alpha. */
+   Motion / Effects: catalog recipes on the selected clips. Text: editable one-line captions (Graphics clips or a caption track), nothing rendered. */
 (function () {
   'use strict';
   var nodeReq = (typeof cep_node !== 'undefined' && cep_node.require) ? cep_node.require : (typeof require !== 'undefined' ? require : null);
@@ -56,7 +56,7 @@
     Array.prototype.forEach.call(document.querySelectorAll('main.tab'), function (m) { m.hidden = m.id !== 'tab-' + name; });
     if (!tabsSeen[name]) { tabsSeen[name] = true; if (name === 'templates') scanTemplates(); if (name === 'motion') renderMotion(); if (name === 'text') renderText(); if (name === 'effects') renderFx(); if (name === 'tools') renderTools(); }
     if (name === 'tools' && tabsSeen.tools) rangeInfo();
-    if ((name === 'effects' || name === 'text') && (!frame.url || /^data:/.test(frame.url))) grabFrame(true);
+    if (name === 'effects' && (!frame.url || /^data:/.test(frame.url))) grabFrame(true);
     store('ah:tab', name);
     refresh();
   }
@@ -437,7 +437,11 @@
   segValue('mtag', function (v) { motion.tag = v; renderMotion(); });
   $('mapply').addEventListener('click', applyMotion);
 
-  // ================= FRAME (shared by Text and Effects previews) =================
+  // shared by Tools
+  function frameWH() { return info.width && info.height ? [info.width, info.height] : [1080, 1920]; }
+  function fmtT(s) { var m = Math.floor(s / 60), r = Math.floor(s - m * 60); return m + ':' + (r < 10 ? '0' : '') + r; }
+
+  // ================= FRAME (Effects preview) =================
   var frame = { url: null, img: null };
   function sampleFrame() {
     var c = document.createElement('canvas'); c.width = 640; c.height = 360; var x = c.getContext('2d');
@@ -465,254 +469,261 @@
     return true;
   }
   $('fxgrab').addEventListener('click', function () { grabFrame(false); });
-  $('tgrab').addEventListener('click', function () { grabFrame(false).then(function (ok) { if (ok) { text.bg = 'frame'; paintBg(); } }); });
 
   // ================= TEXT =================
-  // Caption styles drawn by lib/textfx.js. Preview = final: "Render to timeline" writes a transparent ProRes 4444 .mov
-  // into <project>/Assets/Text and places it at the playhead.
-  var TXF = window.TXF;
-  var FONT_CANDIDATES = ['Montserrat', 'Archivo', 'Clash Display', 'Unbounded', 'Urbanist', 'Manrope', 'Roboto', 'Roboto Condensed', 'Playfair Display', 'Instrument Serif', 'Inter', 'Helvetica Neue', 'Futura', 'Avenir Next', 'Impact'];
-  function hasFont(f) {
-    var c = document.createElement('canvas').getContext('2d'), s = 'mmmmmmmmmlliiWW@#';
-    c.font = '40px monospace'; var a = c.measureText(s).width;
-    c.font = '40px "' + f + '", monospace'; return c.measureText(s).width !== a;
-  }
-  var FONTS = FONT_CANDIDATES.filter(hasFont);
-  var text = { style: load('ah:tstyle', 'rise'), P: Object.assign({}, TXF.DEFAULTS, load('ah:tprops', {})), bg: load('ah:tbg', 'frame'), t0: performance.now(), cards: [], raf: 0 };
-  if (FONTS.indexOf(text.P.font) < 0) text.P.font = FONTS[0] || 'Montserrat';
-  var BOXY = { boxline: 1, pill: 1, boxword: 1 }, PADDED = { boxline: 1, pill: 1, boxword: 1, hlbox: 1 }, ACCENTED = { karaoke: 1, hlbox: 1, boxword: 1, underline: 1, type: 1 };
-  function frameWH() { return info.width && info.height ? [info.width, info.height] : [1080, 1920]; }
-  function saveText() { store('ah:tprops', text.P); store('ah:tstyle', text.style); }
-
-  // ---- properties ----
-  var PROPS = [
-    { k: 'font', l: 'Font', t: 'select', o: function () { return FONTS.map(function (f) { return [f, f]; }); } },
-    { k: 'weight', l: 'Weight', t: 'select', o: function () { return [[400, 'Regular'], [500, 'Medium'], [600, 'Semibold'], [700, 'Bold'], [800, 'Extra bold'], [900, 'Black']]; } },
-    { k: 'size', l: 'Size', t: 'range', min: 2, max: 16, step: 0.25, f: function (v) { return v.toFixed(1); } },
-    { k: 'upper', l: 'Case', t: 'seg', o: [[false, 'Aa'], [true, 'AA']] },
-    { k: 'align', l: 'Align', t: 'seg', o: [['center', 'Centre'], ['left', 'Left']] },
-    { sep: 1 },
-    { k: 'color', l: 'Text', t: 'color' },
-    { k: 'accent', l: 'Accent', t: 'color', also: 'onAccent', when: ACCENTED },
-    { k: 'stroke', l: 'Outline', t: 'range', min: 0, max: 16, step: 1, also: 'strokeColor', f: function (v) { return v ? v + '%' : 'off'; } },
-    { k: 'shadow', l: 'Shadow', t: 'seg', o: [[true, 'On'], [false, 'Off']] },
-    { sep: 1 },
-    { k: 'boxColor', l: 'Box', t: 'color', when: BOXY },
-    { k: 'boxAlpha', l: 'Box opacity', t: 'range', min: 0, max: 100, step: 1, when: BOXY, f: function (v) { return v + '%'; } },
-    { k: 'radius', l: 'Corners', t: 'range', min: 0, max: 50, step: 1, when: PADDED, f: function (v) { return v + '%'; } },
-    { k: 'pad', l: 'Padding', t: 'range', min: 0, max: 80, step: 1, when: PADDED, f: function (v) { return v + '%'; } },
-    { sep: 1 },
-    { k: 'posY', l: 'Position', t: 'range', min: 5, max: 95, step: 1, f: function (v) { return v < 34 ? 'top ' + v : v > 66 ? 'low ' + v : 'mid ' + v; } },
-    { k: 'maxW', l: 'Width', t: 'range', min: 30, max: 100, step: 1, f: function (v) { return v + '%'; } },
-    { k: 'speed', l: 'Stagger', t: 'range', min: 0.02, max: 0.25, step: 0.005, f: function (v) { return Math.round(v * 1000) + 'ms'; } },
-    { k: 'dur', l: 'Duration', t: 'range', min: 1, max: 10, step: 0.5, f: function (v) { return v + 's'; } }
-  ];
-  function renderProps() {
-    var box = $('tprops'), P = text.P;
-    box.innerHTML = PROPS.map(function (d, i) {
-      if (d.sep) return '<div class="sep"></div>';
-      var dim = d.when && !d.when[text.style] ? ' dim' : '', c = '';
-      if (d.t === 'select') c = '<select data-i="' + i + '">' + d.o().map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(P[d.k]) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>';
-      if (d.t === 'range') c = '<input type="range" data-i="' + i + '" min="' + d.min + '" max="' + d.max + '" step="' + d.step + '" value="' + P[d.k] + '"><span class="val">' + d.f(+P[d.k]) + '</span>';
-      if (d.t === 'seg') c = '<div class="seg" data-i="' + i + '">' + d.o.map(function (o, j) { return '<button data-j="' + j + '" class="' + (P[d.k] === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
-      if (d.t === 'color') c = '<input type="color" data-i="' + i + '" value="' + P[d.k] + '">';
-      if (d.also) c += '<input type="color" data-i="' + i + '" data-also="1" value="' + P[d.also] + '" title="' + (d.also === 'onAccent' ? 'Text on the accent' : 'Outline colour') + '">';
-      return '<label class="' + dim + '">' + d.l + '</label><div class="ctl' + dim + '">' + c + '</div>';
-    }).join('');
-    Array.prototype.forEach.call(box.querySelectorAll('select,input'), function (el) {
-      var d = PROPS[+el.getAttribute('data-i')], key = el.getAttribute('data-also') ? d.also : d.k;
-      el.addEventListener('input', function () {
-        P[key] = d.t === 'range' && !el.getAttribute('data-also') ? +el.value : d.k === 'weight' ? +el.value : el.value;
-        if (d.t === 'range' && !el.getAttribute('data-also')) el.nextSibling.textContent = d.f(+el.value);
-        saveText(); relayout();
-      });
-    });
-    Array.prototype.forEach.call(box.querySelectorAll('.seg'), function (sg) {
-      var d = PROPS[+sg.getAttribute('data-i')];
-      Array.prototype.forEach.call(sg.querySelectorAll('button'), function (b) {
-        b.addEventListener('click', function () { P[d.k] = d.o[+b.getAttribute('data-j')][0]; saveText(); renderProps(); relayout(); });
-      });
-    });
-  }
-  $('treset').addEventListener('click', function () { text.P = Object.assign({}, TXF.DEFAULTS); if (FONTS.indexOf(text.P.font) < 0) text.P.font = FONTS[0]; saveText(); renderProps(); relayout(); });
-
-  // ---- style cards + big preview ----
-  function renderText() {
-    var box = $('tstyles');
-    box.innerHTML = TXF.STYLES.map(function (s) { return '<div class="scard' + (s.id === text.style ? ' on' : '') + '" data-id="' + s.id + '" title="' + esc(s.desc) + '"><canvas width="336" height="147"></canvas><div class="n">' + esc(s.name) + '</div></div>'; }).join('');
-    text.cards = Array.prototype.map.call(box.querySelectorAll('.scard'), function (el) {
-      el.addEventListener('click', function () {
-        text.style = el.getAttribute('data-id'); saveText();
-        Array.prototype.forEach.call(box.querySelectorAll('.scard'), function (x) { x.classList.toggle('on', x === el); });
-        renderProps(); relayout();
-      });
-      return { id: el.getAttribute('data-id'), cv: el.querySelector('canvas'), ctx: el.querySelector('canvas').getContext('2d'), el: el };
-    });
-    renderProps(); paintBg(); relayout(); paintSource(true);
-    if (!frame.url) setFrame(sampleFrame());
-    if (!text.raf) loop();
-  }
-  function lineText() { return $('tline').value.trim() || 'Your line here'; }
-  function previewText() { return text.src !== 'line' && text.preview ? text.preview : lineText(); }
-  function relayout() {
-    var wh = frameWH(), cv = $('tbig'), k = Math.min(1, 560 / Math.max(wh[0], wh[1]));
-    if (cv.width !== Math.round(wh[0] * k) || cv.height !== Math.round(wh[1] * k)) { cv.width = Math.round(wh[0] * k); cv.height = Math.round(wh[1] * k); }
-    text.k = k; text.t0 = performance.now();
-    var st = TXF.STYLES.filter(function (s) { return s.id === text.style; })[0];
-    $('tstylename').textContent = st ? st.name + ' · ' + st.desc : '';
-    $('tsize').textContent = wh[0] + '×' + wh[1];
-  }
-  function paintBg() {
-    Array.prototype.forEach.call(document.querySelectorAll('#tbg button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === text.bg); });
-    $('tstage').classList.toggle('check', text.bg === 'check');
-  }
-  segValue('tbg', function (v) { text.bg = v; store('ah:tbg', v); paintBg(); if (v === 'frame' && frame.url && /^data:/.test(frame.url)) grabFrame(true); });
-  function drawBg(ctx, W, H) {
-    if (text.bg === 'check') { ctx.clearRect(0, 0, W, H); return; }
-    ctx.fillStyle = '#0b0c0e'; ctx.fillRect(0, 0, W, H);
-    if (text.bg === 'frame' && frame.img) {
-      var iw = frame.img.width, ih = frame.img.height, s = Math.max(W / iw, H / ih);
-      ctx.globalAlpha = 0.85; ctx.drawImage(frame.img, (W - iw * s) / 2, (H - ih * s) / 2, iw * s, ih * s); ctx.globalAlpha = 1;
-    }
-  }
-  function loop() {
-    text.raf = requestAnimationFrame(loop);
-    if ($('tab-text').hidden) return;
-    var P = text.P, span = P.dur + 0.6, t = ((performance.now() - text.t0) / 1000) % span, line = previewText();
-    var wh = frameWH(), cv = $('tbig'), ctx = cv.getContext('2d');
-    ctx.setTransform(text.k, 0, 0, text.k, 0, 0); drawBg(ctx, wh[0], wh[1]);
-    TXF.draw(ctx, wh[0], wh[1], Math.min(t, P.dur), text.style, line, P);
-    var small = Object.assign({}, P, { posY: 50, maxW: 94, size: 21, lineGap: 1.08, pad: Math.min(text.P.pad, 22) });
-    text.cards.forEach(function (c) {
-      var x = c.ctx; x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, 336, 147); x.fillStyle = '#0b0c0e'; x.fillRect(0, 0, 336, 147);
-      TXF.draw(x, 336, 147, Math.min(t, P.dur), c.id, line, small);
-    });
-  }
-  var tlTimer; $('tline').addEventListener('input', function () { clearTimeout(tlTimer); tlTimer = setTimeout(relayout, 200); });
-  $('tdir').addEventListener('click', async function () { await refresh(); cp.execFile('/usr/bin/open', [assetDir('Text')]); });
-
-  // ---- render: frames -> ffmpeg -> ProRes 4444 with alpha -> timeline ----
-  // Sources: My line (at the playhead) · Captions (the sequence's caption track, read from the saved project)
-  //          · Text clips (selected Graphics / text clips, each re-rendered in place on the track above).
+  // Editable captions only, nothing rendered. Lines come from an SRT / VTT, the sequence's caption track, or a typed line,
+  // are re-chunked to one line each, then placed as (a) one Graphics clip per line from a .mogrt, or (b) a native caption track.
+  // Both stay fully editable in Premiere; Size / Position below restyle every placed line at once.
+  var CAP = nodeReq(path.join(EXT_DIR, 'lib', 'captions.js'));
   var PRC = nodeReq(path.join(EXT_DIR, 'lib', 'prcaptions.js'));
-  text.src = load('ah:tsrc', 'line'); text.preview = null;
-  function fpsOf(sec) {
-    var f = sec ? 1 / sec : 30, near = function (x) { return Math.abs(f - x) < 0.02; };
-    if (near(23.976)) return '24000/1001'; if (near(29.97)) return '30000/1001'; if (near(59.94)) return '60000/1001';
-    return String(Math.round(f * 1000) / 1000);
-  }
-  function blobBuf(cv) {
-    return new Promise(function (res, rej) {
-      cv.toBlob(function (b) {
-        if (!b) return rej(new Error('Frame could not be encoded.'));
-        var fr = new FileReader(); fr.onload = function () { res(Buffer.from(fr.result)); }; fr.onerror = rej; fr.readAsArrayBuffer(b);
-      }, 'image/png');
+  var text = {
+    src: load('ah:tsrc', 'srt'), out: load('ah:tout', 'graphics'), at: load('ah:tat', 'zero'),
+    opt: Object.assign({ maxWords: 4, maxChars: 28, upper: false, dropPunct: false }, load('ah:topt', {})),
+    srt: load('ah:tsrtfile', ''), tpl: load('ah:ttpl', ''), pct: load('ah:tpct', 100), off: load('ah:toff', 0), dur: load('ah:tdur', 3),
+    cues: [], lines: [], tpls: [], last: load('ah:tlast', null)
+  };
+  if (['srt', 'captions', 'line'].indexOf(text.src) < 0) text.src = 'srt';
+
+  // ---- templates: any .mogrt with a text field (Premiere-made Graphics work best) ----
+  var CAP_TPL_DIR = path.join(HOME, 'Caption Templates');
+  try { fs.mkdirSync(CAP_TPL_DIR, { recursive: true }); } catch (e) {}
+  function walkMogrt(dir, depth, out) {
+    var names = []; try { names = fs.readdirSync(dir); } catch (e) { return; }
+    names.forEach(function (n) {
+      var p = path.join(dir, n), st; try { st = fs.statSync(p); } catch (e) { return; }
+      if (st.isDirectory() && depth > 0 && !/\.app$/i.test(n)) walkMogrt(p, depth - 1, out);
+      else if (/\.mogrt$/i.test(n)) out.push(p);
     });
   }
-  function styleName() { return (TXF.STYLES.filter(function (s) { return s.id === text.style; })[0] || {}).name || text.style; }
-  // segs: [{start, end, text}] in seconds from the file's first frame
-  async function renderSegs(segs, total, label, progLabel) {
-    var ff = which('ffmpeg'); if (!ff) throw new Error('ffmpeg is needed to render (brew install ffmpeg).');
-    var P = Object.assign({}, text.P), W = info.width, H = info.height, fps = fpsOf(info.frame), fpsN = info.frame ? 1 / info.frame : 30;
-    var n = Math.max(1, Math.round(total * fpsN)), st = text.style, bar = $('tprog').firstElementChild;
-    var out = uniq(assetDir('Text'), safeName(styleName() + ' - ' + label) + '-' + stamp(), '.mov');
-    await document.fonts.load(P.weight + ' 40px "' + P.font + '"');
-    var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var ctx = cv.getContext('2d');
-    var proc = cp.spawn(ff, ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', fps, '-c:v', 'png', '-i', '-',
-      '-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', '-alpha_bits', '16', '-vendor', 'apl0', out]);
-    var errText = ''; proc.stderr.on('data', function (d) { errText += d; });
-    var ended = new Promise(function (res) { proc.on('close', function (code) { res(code); }); });
-    var empty = null, k = 0;
-    segs.forEach(function (sg, i) { sg.noFade = !!(segs[i + 1] && segs[i + 1].start - sg.end < 0.12); });
-    for (var i = 0; i < n; i++) {
-      var T = i / fpsN;
-      while (k < segs.length && segs[k].end <= T) k++;
-      var sg = segs[k] && segs[k].start <= T ? segs[k] : null, buf;
-      if (!sg) { if (!empty) { ctx.clearRect(0, 0, W, H); empty = await blobBuf(cv); } buf = empty; }
-      else {
-        ctx.clearRect(0, 0, W, H);
-        TXF.draw(ctx, W, H, T - sg.start, st, sg.text, Object.assign({}, P, { dur: Math.max(0.5, sg.end - sg.start), noFade: sg.noFade }));
-        buf = await blobBuf(cv);
-      }
-      if (!proc.stdin.write(buf)) await new Promise(function (r) { proc.stdin.once('drain', r); });
-      if (i % 5 === 0) { bar.style.width = Math.round((i + 1) / n * 100) + '%'; setStatus('tstatus', (progLabel || 'Rendering') + ' · frame ' + (i + 1) + ' of ' + n); }
-    }
-    proc.stdin.end();
-    var code = await ended;
-    bar.style.width = '100%';
-    if (code !== 0 || !fs.existsSync(out)) throw new Error('ffmpeg failed: ' + (errText.split('\n').filter(Boolean).pop() || 'code ' + code));
+  function appGraphicsDirs() {
+    var out = [];
+    try {
+      fs.readdirSync('/Applications').filter(function (n) { return /^Adobe Premiere Pro/i.test(n); }).forEach(function (d) {
+        var root = path.join('/Applications', d);
+        (fs.readdirSync(root) || []).filter(function (n) { return /\.app$/i.test(n); }).forEach(function (a) { out.push(path.join(root, a, 'Contents', 'Essential Graphics')); });
+      });
+    } catch (e) {}
     return out;
   }
-  async function readCaptionCues() {
-    var sv = await jsx('ahSave()');                   // captions are read from the saved project file
-    if (sv.error) throw new Error(sv.error);
-    var r = PRC.readCaptions(sv.path, info.seqId);
-    if (!r.tracks.length) throw new Error('This sequence has no caption track. Create captions (Text panel › Transcript › Create captions) first.');
-    return r.tracks[0];
+  function scanCapTemplates() {
+    var found = [];
+    walkMogrt(CAP_TPL_DIR, 2, found);
+    walkMogrt(TPL_DIR, 1, found);
+    appGraphicsDirs().forEach(function (d) { walkMogrt(d, 3, found); });
+    if (text.tpl && fs.existsSync(text.tpl) && found.indexOf(text.tpl) < 0) found.unshift(text.tpl);
+    var rank = function (p) { var n = path.basename(p); return p.indexOf(CAP_TPL_DIR) === 0 ? 0 : /caption|subtitle/i.test(n) ? 1 : /title|text|lower/i.test(n) ? 2 : 3; };
+    text.tpls = found.filter(function (p, i) { return found.indexOf(p) === i; })
+      .sort(function (a, b) { return rank(a) - rank(b) || path.basename(a).localeCompare(path.basename(b), undefined, { numeric: true }); });
+    if (!text.tpl || text.tpls.indexOf(text.tpl) < 0) text.tpl = text.tpls[0] || '';
+    paintTemplates();
   }
-  async function paintSource(quiet) {      // quiet: on tab open, never save the project by itself
-    Array.prototype.forEach.call(document.querySelectorAll('#tsrc button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === text.src); });
-    $('toffrow').hidden = text.src !== 'clips';
-    $('trender').textContent = text.src === 'captions' ? 'Apply to captions' : text.src === 'clips' ? 'Apply to text clips' : 'Render to timeline';
-    text.preview = null; setStatus('tstatus', '');
-    if (text.src === 'line' || busy) return;
-    if (quiet) { setStatus('tstatus', text.src === 'captions' ? 'Captions: press Apply to read the caption track (saves the project first).' : 'Select Graphics / text clips, then Apply.'); return; }
-    await refresh();
-    try {
-      if (text.src === 'captions') {
-        if (!info.sequence) return setStatus('tstatus', 'Open the sequence with the captions.', 'warn');
-        var cues = await readCaptionCues();
-        text.preview = cues[0].text;
-        setStatus('tstatus', cues.length + ' captions found (' + fmtT(cues[0].start) + ' – ' + fmtT(cues[cues.length - 1].end) + '). Preview shows the first one.', 'ok');
-      } else {
-        var r = await jsx('ahTextClips()');
-        if (r.error) return setStatus('tstatus', r.error, 'warn');
-        if (!r.clips.length) return setStatus('tstatus', 'Select Graphics / text clips in the timeline' + (r.selected ? ' (the ' + r.selected + ' selected have no text).' : '.'), 'warn');
-        text.preview = r.clips[0].text;
-        setStatus('tstatus', r.clips.length + ' text clip' + (r.clips.length > 1 ? 's' : '') + ' selected. Preview shows the first.', 'ok');
-      }
-    } catch (e) { setStatus('tstatus', e.message, 'bad'); }
+  function tplLabel(p) {
+    var where = p.indexOf(CAP_TPL_DIR) === 0 ? 'Arena' : p.indexOf(TPL_DIR) === 0 ? 'Library' : /Essential Graphics/.test(p) ? 'Premiere' : 'Custom';
+    return path.basename(p).replace(/\.mogrt$/i, '') + '  ·  ' + where;
   }
-  function fmtT(s) { var m = Math.floor(s / 60), r = Math.floor(s - m * 60); return m + ':' + (r < 10 ? '0' : '') + r; }
-  segValue('tsrc', function (v) { text.src = v; store('ah:tsrc', v); paintSource(); });
+  function paintTemplates() {
+    var sel = $('ttpl');
+    sel.innerHTML = text.tpls.length ? text.tpls.map(function (p) { return '<option value="' + esc(p) + '"' + (p === text.tpl ? ' selected' : '') + '>' + esc(tplLabel(p)) + '</option>'; }).join('')
+      : '<option value="">No .mogrt found: Choose…</option>';
+  }
+  $('ttpl').addEventListener('change', function () { text.tpl = this.value; store('ah:ttpl', text.tpl); });
+  function pickFile(title, types) {
+    try { var r = window.cep.fs.showOpenDialogEx(false, false, title, '', types); return r && r.data && r.data[0] ? r.data[0] : ''; }
+    catch (e) { try { var r2 = window.cep.fs.showOpenDialog(false, false, title, '', types); return r2 && r2.data && r2.data[0] ? r2.data[0] : ''; } catch (e2) { return ''; } }
+  }
+  function useTemplate(p) {
+    if (!p) return;
+    var dest = path.join(CAP_TPL_DIR, path.basename(p));      // keep a copy so it survives the original moving
+    try { if (p.indexOf(CAP_TPL_DIR) !== 0) fs.copyFileSync(p, dest); else dest = p; } catch (e) { dest = p; }
+    text.tpl = dest; store('ah:ttpl', dest); scanCapTemplates();
+    setStatus('tstatus', 'Template: ' + path.basename(dest), 'ok');
+  }
+  $('ttplpick').addEventListener('click', function () { useTemplate(pickFile('Choose a caption .mogrt', ['mogrt'])); });
 
-  $('trender').addEventListener('click', async function () {
+  // ---- source ----
+  function paintSource() {
+    Array.prototype.forEach.call(document.querySelectorAll('#tsrc button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === text.src); });
+    $('tsrcsrt').hidden = text.src !== 'srt'; $('tsrccap').hidden = text.src !== 'captions'; $('tsrcline').hidden = text.src !== 'line';
+    $('tsrtname').textContent = text.srt ? path.basename(text.srt) : 'Drop an .srt / .vtt here, or click to choose';
+    $('tsrtbox').classList.toggle('has', !!text.srt);
+    Array.prototype.forEach.call(document.querySelectorAll('#tat button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === text.at); });
+  }
+  segValue('tsrc', function (v) { text.src = v; store('ah:tsrc', v); paintSource(); loadSource(true); });
+  segValue('tat', function (v) { text.at = v; store('ah:tat', v); });
+  function loadSrt(p) {
+    if (!p) return;
+    try {
+      var cues = CAP.parse(fs.readFileSync(p, 'utf8'));
+      if (!cues.length) { setStatus('tstatus', path.basename(p) + ' has no timed captions.', 'warn'); return; }
+      text.srt = p; store('ah:tsrtfile', p); text.cues = cues; paintSource(); rechunk();
+      setStatus('tstatus', cues.length + ' captions read from ' + path.basename(p) + '.', 'ok');
+    } catch (e) { setStatus('tstatus', 'Could not read ' + path.basename(p) + ': ' + e.message, 'bad'); }
+  }
+  $('tsrtbox').addEventListener('click', function () { loadSrt(pickFile('Choose captions', ['srt', 'vtt'])); });
+  $('tcapread').addEventListener('click', function () { loadSource(false); });
+  $('tline').addEventListener('input', function () { if (text.src === 'line') loadSource(true); });
+  async function loadSource(quiet) {
+    text.cues = [];
+    if (text.src === 'srt') {
+      if (text.srt && fs.existsSync(text.srt)) { try { text.cues = CAP.parse(fs.readFileSync(text.srt, 'utf8')); } catch (e) {} }
+    } else if (text.src === 'line') {
+      var t = $('tline').value.trim(); if (t) text.cues = [{ start: 0, end: +text.dur, text: t }];
+    } else if (!quiet) {              // caption track: saves the project, so only on request
+      await refresh();
+      if (!info.sequence) { setStatus('tstatus', 'Open the sequence with the captions.', 'warn'); return rechunk(); }
+      try {
+        setStatus('tstatus', 'Saving and reading the caption track…');
+        var sv = await jsx('ahSave()'); if (sv.error) throw new Error(sv.error);
+        var r = PRC.readCaptions(sv.path, info.seqId);
+        if (!r.tracks.length) throw new Error('This sequence has no caption track. Text panel › Transcript › Create captions, or use an SRT.');
+        text.cues = r.tracks[0].map(function (c) { return { start: c.start, end: c.end, text: String(c.text).replace(/\s+/g, ' ').trim() }; }).filter(function (c) { return c.text; });
+        setStatus('tstatus', text.cues.length + ' captions read from the caption track. Placing on Graphics keeps their timing; hide the old caption track afterwards.', 'ok');
+      } catch (e) { setStatus('tstatus', e.message, 'bad'); }
+    } else {
+      setStatus('tstatus', 'Read the caption track to load it (this saves the project first).');
+    }
+    rechunk();
+  }
+
+  // ---- lines: one line per caption ----
+  var LINE_OPTS = [
+    { k: 'maxWords', l: 'Words / line', min: 1, max: 10, step: 1, f: function (v) { return v; } },
+    { k: 'maxChars', l: 'Max chars', min: 8, max: 60, step: 1, f: function (v) { return v; } }
+  ];
+  function renderLineOpts() {
+    var o = text.opt;
+    $('topts').innerHTML = LINE_OPTS.map(function (d, i) {
+      return '<label>' + d.l + '</label><div class="ctl"><input type="range" data-i="' + i + '" min="' + d.min + '" max="' + d.max + '" step="' + d.step + '" value="' + o[d.k] + '"><span class="val">' + d.f(o[d.k]) + '</span></div>';
+    }).join('') +
+      '<label>Case</label><div class="ctl"><div class="seg" id="tcase"><button data-v="0" class="' + (o.upper ? '' : 'on') + '">As written</button><button data-v="1" class="' + (o.upper ? 'on' : '') + '">ALL CAPS</button></div></div>' +
+      '<label>Punctuation</label><div class="ctl"><div class="seg" id="tpunct"><button data-v="0" class="' + (o.dropPunct ? '' : 'on') + '">Keep</button><button data-v="1" class="' + (o.dropPunct ? 'on' : '') + '">Drop , . ; :</button></div></div>';
+    Array.prototype.forEach.call($('topts').querySelectorAll('input[type=range]'), function (el) {
+      var d = LINE_OPTS[+el.getAttribute('data-i')];
+      el.addEventListener('input', function () { o[d.k] = +el.value; el.nextSibling.textContent = d.f(+el.value); store('ah:topt', o); rechunkSoon(); });
+    });
+    segValue('tcase', function (v) { o.upper = v === '1'; store('ah:topt', o); rechunk(); });
+    segValue('tpunct', function (v) { o.dropPunct = v === '1'; store('ah:topt', o); rechunk(); });
+  }
+  var rcTimer; function rechunkSoon() { clearTimeout(rcTimer); rcTimer = setTimeout(rechunk, 120); }
+  function fmtTc(s) { var m = Math.floor(s / 60), r = s - m * 60; return m + ':' + (r < 10 ? '0' : '') + r.toFixed(1); }
+  function rechunk() {
+    text.lines = text.src === 'line' ? text.cues.map(function (c) { return Object.assign({}, c, { text: text.opt.upper ? c.text.toUpperCase() : c.text }); }) : CAP.chunk(text.cues, text.opt);
+    var box = $('tlines');
+    $('tcount').textContent = text.lines.length ? text.lines.length + ' line' + (text.lines.length > 1 ? 's' : '') : '';
+    if (!text.lines.length) { box.innerHTML = '<div class="empty">' + (text.src === 'captions' ? 'Read the caption track to see its lines.' : text.src === 'line' ? 'Type a line above.' : 'Choose an SRT to see its lines.') + '</div>'; paintPlace(); return; }
+    box.innerHTML = text.lines.map(function (l, i) {
+      return '<div class="cline"><span class="tc">' + fmtTc(l.start) + '</span><input data-i="' + i + '" value="' + esc(l.text) + '" spellcheck="false"></div>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('input'), function (el) {
+      el.addEventListener('input', function () { text.lines[+el.getAttribute('data-i')].text = el.value; });
+    });
+    paintPlace();
+  }
+
+  // ---- output ----
+  function paintOut() {
+    Array.prototype.forEach.call(document.querySelectorAll('#tout button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === text.out); });
+    $('tgfx').hidden = text.out !== 'graphics';
+    $('tadjust').hidden = text.out !== 'graphics';
+    $('tcapnote').hidden = text.out !== 'track';
+    paintPlace();
+  }
+  segValue('tout', function (v) { text.out = v; store('ah:tout', v); paintOut(); });
+  function paintPlace() {
+    var n = text.lines.length, b = $('tplace');
+    b.disabled = !n;
+    b.textContent = !n ? 'No lines yet' : text.out === 'track' ? 'Add caption track (' + n + ')' : 'Place ' + n + ' text clip' + (n > 1 ? 's' : '');
+  }
+  function offsetFor() { return text.src === 'captions' ? 0 : (text.src === 'line' || text.at === 'playhead') ? (info.playhead || 0) : 0; }
+  function liveLines() { return text.lines.map(function (l) { return { start: l.start, end: l.end, text: String(l.text).replace(/\s+/g, ' ').trim() }; }).filter(function (l) { return l.text; }); }
+  function writeSrt(lines, off) {
+    var out = uniq(assetDir('Text'), safeName((info.sequence || 'captions') + ' - lines') + '-' + stamp(), '.srt');
+    fs.writeFileSync(out, CAP.toSrt(lines, off), 'utf8');
+    return out;
+  }
+
+  $('tplace').addEventListener('click', async function () {
     if (busy) return;
     await refresh();
-    if (!info.sequence) { setStatus('tstatus', 'Open a sequence first; text renders at its frame size.', 'warn'); return; }
-    busy = true; $('trender').disabled = true; $('tprog').hidden = false; $('tprog').firstElementChild.style.width = '0';
+    if (!info.sequence) return setStatus('tstatus', 'Open a sequence first.', 'warn');
+    var lines = liveLines(); if (!lines.length) return setStatus('tstatus', 'No lines to place.', 'warn');
+    var off = offsetFor(), bar = $('tprog').firstElementChild;
+    busy = true; $('tplace').disabled = true; $('tprog').hidden = false; bar.style.width = '0';
     try {
-      if (text.src === 'line') {
-        var line = lineText(), out = await renderSegs([{ start: 0, end: text.P.dur, text: line }], text.P.dur, line.split(/\s+/).slice(0, 4).join(' '));
-        var r = await jsx('ahImport(' + q(out) + ',true,"Arena Text")');
+      if (text.out === 'track') {
+        setStatus('tstatus', 'Making the caption track…');
+        var srt = writeSrt(lines, off), r = await jsx('ahCaptionTrack(' + q(srt) + ')');
         if (r.error) throw new Error(r.error);
-        setStatus('tstatus', styleName() + ' rendered → Arena Text' + (r.placed ? ', on ' + r.placed + ' at the playhead' : '') + (r.note ? '. ' + r.note : ''), r.note ? 'warn' : 'ok');
-      } else if (text.src === 'captions') {
-        setStatus('tstatus', 'Saving and reading the captions…');
-        var cues = await readCaptionCues(), t0 = cues[0].start, t1 = cues[cues.length - 1].end;
-        var segs = cues.map(function (c) { return { start: c.start - t0, end: c.end - t0, text: c.text }; });
-        var outC = await renderSegs(segs, t1 - t0, 'captions', cues.length + ' captions');
-        var rc = await jsx('ahPlace(' + q(outC) + ',' + t0 + ',' + t1 + ',1,"Arena Text")');
-        if (rc.error) throw new Error(rc.error);
-        setStatus('tstatus', cues.length + ' captions styled as ' + styleName() + ' on ' + rc.placed + '. Hide the caption track (eye icon) so they don\'t double up.', 'ok');
+        bar.style.width = '100%';
+        setStatus('tstatus', lines.length + ' one-line captions added as a caption track. Select them all in the timeline to change font, size and position together in Essential Graphics.', 'ok');
       } else {
-        var tc = await jsx('ahTextClips()');
-        if (tc.error) throw new Error(tc.error);
-        if (!tc.clips.length) throw new Error('Select Graphics / text clips in the timeline first.');
-        var done = 0, placed = [];
-        for (var i = 0; i < tc.clips.length; i++) {
-          var c = tc.clips[i], d = c.end - c.start;
-          var o = await renderSegs([{ start: 0, end: d, text: c.text }], d, c.text.split(/\s+/).slice(0, 4).join(' '), 'Clip ' + (i + 1) + ' of ' + tc.clips.length);
-          var rp = await jsx('ahPlace(' + q(o) + ',' + c.start + ',' + c.end + ',' + (c.track + 1) + ',"Arena Text")');
-          if (rp.error) throw new Error(rp.error);
-          if ($('toff').checked) await evalJsx('ahDisable(' + c.track + ',' + c.index + ')');
-          done++; placed.push(rp.placed);
+        if (!text.tpl || !fs.existsSync(text.tpl)) throw new Error('Choose a caption template (.mogrt) first, or switch Output to Caption track.');
+        var a = lines[0].start + off, z = lines[lines.length - 1].end + off;
+        var tr = await jsx('ahTrackFor(' + a + ',' + (z + 10) + ',1)');
+        if (tr.error) throw new Error(tr.error);
+        var placed = 0, textSet = 0, base = 0, unit = '%', BATCH = 12;
+        for (var i = 0; i < lines.length; i += BATCH) {
+          var part = lines.slice(i, i + BATCH).map(function (l) { return { s: l.start + off, e: l.end + off, t: l.text }; });
+          setStatus('tstatus', 'Placing ' + Math.min(i + BATCH, lines.length) + ' of ' + lines.length + '…');
+          var rb = await jsx('ahCapBatch(' + q(text.tpl) + ',' + tr.track + ',' + q(JSON.stringify(part)) + ',' + (+text.pct) + ')');
+          if (rb.error) throw new Error(rb.error);
+          placed += rb.placed; textSet += rb.textSet;
+          if (!base && rb.base) { base = rb.base; unit = rb.unit; } else if (i === 0) unit = rb.unit;
+          bar.style.width = Math.round(Math.min(i + BATCH, lines.length) / lines.length * 100) + '%';
         }
-        setStatus('tstatus', done + ' text clip' + (done > 1 ? 's' : '') + ' re-styled as ' + styleName() + ' (' + placed.filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') + ')' + ($('toff').checked ? ', originals turned off.' : '.'), 'ok');
+        if (!placed) throw new Error('Premiere refused this template. Try a Premiere-made Graphics .mogrt.');
+        text.last = { seq: info.seqId, track: tr.track, a: a, b: z, base: base, unit: unit }; store('ah:tlast', text.last);
+        paintAdjust();
+        var note = textSet < placed ? ' The template has no text field Arena can write, so ' + (placed - textSet) + ' show its default text: pick another template.' : '';
+        setStatus('tstatus', placed + ' editable text clips on V' + (tr.track + 1) + (tr.added ? ' (new track)' : '') + '. Double-click any one to edit it; Size and Position below change them all.' + note, note ? 'warn' : 'ok');
       }
     } catch (e) { setStatus('tstatus', e.message || String(e), 'bad'); }
-    busy = false; $('trender').disabled = false; setTimeout(function () { $('tprog').hidden = true; }, 800);
+    busy = false; paintPlace(); setTimeout(function () { $('tprog').hidden = true; }, 800);
   });
+  $('tsave').addEventListener('click', async function () {
+    await refresh();
+    var lines = liveLines(); if (!lines.length) return setStatus('tstatus', 'No lines to save.', 'warn');
+    try { var p = writeSrt(lines, offsetFor()); cp.execFile('/usr/bin/open', ['-R', p]); setStatus('tstatus', 'Saved ' + path.basename(p) + ' (' + lines.length + ' one-line captions).', 'ok'); }
+    catch (e) { setStatus('tstatus', e.message, 'bad'); }
+  });
+
+  // ---- adjust placed captions: Size / Position on the selection, else on the last batch ----
+  function paintAdjust() {
+    $('tpct').value = text.pct; $('tpctv').textContent = text.pct + '%';
+    $('toffs').value = text.off; $('toffv').textContent = (text.off > 0 ? '+' : '') + text.off + '%';
+    $('tadjnote').textContent = text.last ? 'Changes the selected captions, or the last batch on V' + (text.last.track + 1) + ' when nothing is selected.' : 'Size is used when placing. After placing, it changes the selected captions, or the whole batch.';
+  }
+  var adjTimer;
+  function adjust(which) {
+    clearTimeout(adjTimer);
+    adjTimer = setTimeout(async function () {
+      if (busy) return;
+      await refresh();
+      var L = text.last && text.last.seq === info.seqId ? text.last : null;
+      if (!L && !info.selected) return;
+      var r = await jsx('ahCapStyle(' + (L ? L.track : -1) + ',' + (L ? L.a : 0) + ',' + (L ? L.b : 0) + ',' + (which === 'size' ? +text.pct : 'null') + ',' + (L && L.base ? L.base : 0) + ',' + (which === 'pos' ? +text.off : 'null') + ')');
+      if (r.error) return setStatus('tstatus', r.error, 'bad');
+      setStatus('tstatus', (which === 'size' ? 'Size ' + text.pct + '%' : 'Position ' + (text.off > 0 ? '+' : '') + text.off + '%') + ' on ' + r.done + (r.selection ? ' selected' : '') + ' caption' + (r.done === 1 ? '' : 's') + (r.miss ? ' (' + r.miss + ' had no size / position to change)' : '') + '.', r.miss ? 'warn' : 'ok');
+    }, 260);
+  }
+  $('tpct').addEventListener('input', function () { text.pct = +this.value; store('ah:tpct', text.pct); $('tpctv').textContent = text.pct + '%'; adjust('size'); });
+  $('toffs').addEventListener('input', function () { text.off = +this.value; store('ah:toff', text.off); $('toffv').textContent = (text.off > 0 ? '+' : '') + text.off + '%'; adjust('pos'); });
+  $('tdur').addEventListener('input', function () { text.dur = +this.value; store('ah:tdur', text.dur); $('tdurv').textContent = text.dur + 's'; loadSource(true); });
+
+  // drop an .srt / .vtt / .mogrt anywhere on the Text tab
+  document.addEventListener('drop', function (e) {
+    if (!document.querySelector('#tab-text:not([hidden])')) return;
+    var f = Array.prototype.slice.call(e.dataTransfer.files || []).map(function (x) { return x.path; }).filter(Boolean)[0];
+    if (!f) return;
+    if (/\.(srt|vtt)$/i.test(f)) { text.src = 'srt'; store('ah:tsrc', 'srt'); loadSrt(f); }
+    else if (/\.mogrt$/i.test(f)) { text.out = 'graphics'; store('ah:tout', 'graphics'); paintOut(); useTemplate(f); }
+    else setStatus('tstatus', 'Drop an .srt, .vtt or .mogrt here.', 'warn');
+  });
+
+  function renderText() {
+    $('tdur').value = text.dur; $('tdurv').textContent = text.dur + 's';
+    renderLineOpts(); paintSource(); paintOut(); paintAdjust(); scanCapTemplates(); loadSource(true);
+  }
 
   // ================= EFFECTS =================
   var fx = { list: readJson('catalog/effects.json').recipes || [], group: 'Trending', sel: null };

@@ -1,1 +1,1 @@
-{ "version": "0.4.0", "notes": "New Tools tab: adjustment layer (with an effect) and mattes / overlays over the selected section, never overwriting" }
+{ "version": "0.5.0", "notes": "Text tab is now editable captions: SRT / caption track / typed line, one line per caption, placed as Graphics text clips or a native caption track. Size and Position change them all. No more .mov renders." }

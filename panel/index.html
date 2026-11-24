@@ -92,30 +92,49 @@
 <!-- TEXT -->
 <main class="tab" id="tab-text" hidden>
   <section>
-    <div class="stage" id="tstage"><canvas id="tbig"></canvas></div>
-    <div class="row spread stagebar">
-      <div class="seg" id="tbg"><button data-v="frame" class="on">Frame</button><button data-v="dark">Dark</button><button data-v="check">Alpha</button></div>
-      <div class="row"><span class="muted" id="tsize"></span><button id="tgrab" class="ghost" title="Use the frame under the playhead">Grab frame</button></div>
+    <div class="cap"><span>Captions from</span></div>
+    <div class="seg" id="tsrc"><button data-v="srt">SRT file</button><button data-v="captions">Caption track</button><button data-v="line">My line</button></div>
+    <div id="tsrcsrt" class="srcpane">
+      <div id="tsrtbox" class="dropzone slim" tabindex="0"><b id="tsrtname"></b><span>.srt or .vtt · drop a .mogrt here to use it as the style</span></div>
+      <div class="row opts"><span class="muted">Start at</span><div class="seg small" id="tat"><button data-v="zero">Sequence start</button><button data-v="playhead">Playhead</button></div></div>
     </div>
-    <textarea id="tline" rows="2">Clone yourself in one day</textarea>
+    <div id="tsrccap" class="srcpane" hidden>
+      <div class="row spread"><span class="muted">Reads the open sequence's caption track (saves the project first).</span><button id="tcapread" class="ghost">Read captions</button></div>
+    </div>
+    <div id="tsrcline" class="srcpane" hidden>
+      <textarea id="tline" rows="2">Clone yourself in one day</textarea>
+      <div class="props"><label>Duration</label><div class="ctl"><input type="range" id="tdur" min="0.5" max="10" step="0.5"><span class="val" id="tdurv"></span></div></div>
+    </div>
   </section>
   <section>
-    <div class="cap"><span>Styles</span><span class="end" id="tstylename"></span></div>
-    <div class="sgrid" id="tstyles"></div>
+    <div class="cap"><span>One line per caption</span></div>
+    <div class="props" id="topts"></div>
+  </section>
+  <section class="grow">
+    <div class="cap"><span>Lines</span><span class="end" id="tcount"></span></div>
+    <div class="list clines" id="tlines"></div>
   </section>
   <section>
-    <div class="cap"><span>Properties</span><button class="link end" id="treset">Reset</button></div>
-    <div class="props" id="tprops"></div>
+    <div class="cap"><span>Output</span></div>
+    <div class="seg" id="tout"><button data-v="graphics">Graphics text clips</button><button data-v="track">Caption track</button></div>
+    <div id="tgfx" class="props outpane">
+      <label>Style</label><div class="ctl"><select id="ttpl"></select><button id="ttplpick" class="ghost">Choose…</button></div>
+    </div>
+    <div id="tcapnote" class="note" hidden>Native Premiere captions: edit text in the Text panel, and select them all to restyle together in Essential Graphics.</div>
+  </section>
+  <section id="tadjust">
+    <div class="cap"><span>Size &amp; position</span></div>
+    <div class="props">
+      <label>Size</label><div class="ctl"><input type="range" id="tpct" min="40" max="250" step="5"><span class="val" id="tpctv"></span></div>
+      <label>Position</label><div class="ctl"><input type="range" id="toffs" min="-45" max="45" step="1"><span class="val" id="toffv"></span></div>
+    </div>
+    <div class="note" id="tadjnote"></div>
   </section>
   <footer>
-    <div class="row spread">
-      <div class="seg" id="tsrc"><button data-v="line" class="on">My line</button><button data-v="captions">Captions</button><button data-v="clips">Text clips</button></div>
-    </div>
-    <label id="toffrow" hidden><input type="checkbox" id="toff" checked>Turn off the originals</label>
     <div class="progress" id="tprog" hidden><div></div></div>
     <div class="actions">
-      <button id="trender" class="primary">Render to timeline</button>
-      <button id="tdir" class="second">Open text folder</button>
+      <button id="tplace" class="primary">Place</button>
+      <button id="tsave" class="second">Save SRT</button>
     </div>
     <div class="status" id="tstatus"></div>
   </footer>
@@ -169,7 +188,6 @@
   </footer>
 </main>
 
-<script src="lib/textfx.js"></script>
 <script src="main.js"></script>
 </body>
 </html>
