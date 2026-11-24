@@ -1,1 +1,1 @@
-{ "version": "0.6.0", "notes": "Text is now Auto captions: transcribes the voice track on your Mac (whisper, offline), one-line captions with a live 9:16 preview, unsure words flagged for review, brand spelling fixes. Needs once: brew install whisper-cpp." }
+{ "version": "0.6.1", "notes": "Auto captions: Place is ready as soon as captions finish. Shorter Voice menu labels." }

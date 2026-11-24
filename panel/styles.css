@@ -194,7 +194,8 @@ button.big { height: 36px; font-size: 13px; font-weight: 650; }
 .autoopts { flex-wrap: nowrap; gap: 6px; }
 .autoopts .seg { flex: 1; min-width: 0; }
 .autoopts select, .stylerow select { height: 24px; min-width: 0; background: var(--bg-sunk); border: 1px solid var(--line); border-radius: 4px; color: var(--text); font: inherit; padding: 0 6px; }
-.autoopts select { width: 92px; flex: none; }
+.autoopts select { width: 100px; flex: none; }
+#tmodel { width: 86px; }
 .others { gap: 6px; font-size: 11px; }
 .tmain { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; min-height: 0; }
 .pvcol { display: flex; flex-direction: column; gap: 5px; }

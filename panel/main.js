@@ -635,7 +635,7 @@
       bar.style.width = '100%';
       rechunk(true);
     } catch (e) { setStatus('tstatus', e.message || String(e), 'bad'); }
-    busy = false; $('tauto').disabled = false; setTimeout(function () { $('tprog').hidden = true; }, 800);
+    busy = false; $('tauto').disabled = false; paintPlace(); setTimeout(function () { $('tprog').hidden = true; }, 800);
   }
   $('tauto').addEventListener('click', autoCaptions);
   segValue('trange', function (v) { text.range = v; store('ah:trange', v); });
@@ -643,7 +643,7 @@
   $('ttrack').addEventListener('change', function () { text.track = +this.value; store('ah:ttrack', text.track); });
   function paintTracks(r) {
     if (!r || !r.tracks) return;
-    $('ttrack').innerHTML = '<option value="-1">Voice: auto</option>' + r.tracks.map(function (t) { return '<option value="' + t.i + '"' + (t.i === +text.track ? ' selected' : '') + '>Voice: ' + t.name + (t.clips ? ' · ' + t.clips + ' clips' : ' · empty') + (t.muted ? ' · muted' : '') + '</option>'; }).join('');
+    $('ttrack').innerHTML = '<option value="-1">Voice auto</option>' + r.tracks.map(function (t) { return '<option value="' + t.i + '"' + (t.i === +text.track ? ' selected' : '') + '>Voice ' + t.name + (t.clips ? ' · ' + t.clips + ' clips' : ' · empty') + (t.muted ? ' · muted' : '') + '</option>'; }).join('');
   }
 
   // other sources
