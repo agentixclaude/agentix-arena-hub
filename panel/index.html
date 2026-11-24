@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Agentix Arena Hub</title>
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1>Arena Hub</h1>
+    <div class="sub"><span id="where">No project open</span><span id="selchip" class="chip" hidden></span></div>
+  </div>
+  <div class="hright"><span id="ver" class="ver"></span><button id="refresh" class="ghost" title="Re-read the project">Refresh</button></div>
+</header>
+
+<div id="update" class="update" hidden>
+  <span id="updatetext"></span>
+  <button id="updatebtn">Update now</button>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="drop" class="on">Drop</button>
+  <button data-tab="templates">Templates</button>
+  <button data-tab="motion">Motion</button>
+  <button data-tab="text">Text</button>
+  <button data-tab="effects">Effects</button>
+</nav>
+
+<!-- DROP -->
+<main class="tab" id="tab-drop">
+  <section>
+    <div class="cap"><span>Paste or drop</span></div>
+    <div id="dropzone" class="dropzone" tabindex="0">
+      <b>Paste an image, a file or a link</b>
+      <span>⌘V here, the Paste button, or drag files in</span>
+    </div>
+    <div class="row urlrow">
+      <input type="text" id="url" placeholder="https://… image, video, YouTube, Instagram, any page">
+      <button id="urlgo">Get</button>
+    </div>
+    <div class="row opts">
+      <label><input type="checkbox" id="place" checked>Place at playhead</label>
+    </div>
+  </section>
+  <section class="grow">
+    <div class="cap"><span>Recent drops</span><span class="end" id="dropcount"></span></div>
+    <div class="list" id="drops"></div>
+  </section>
+  <footer>
+    <div class="actions">
+      <button id="paste" class="primary">Paste from clipboard</button>
+      <button id="dropsdir" class="second">Open drops folder</button>
+    </div>
+    <div class="status" id="dropstatus"></div>
+  </footer>
+</main>
+
+<!-- TEMPLATES -->
+<main class="tab" id="tab-templates" hidden>
+  <section>
+    <div class="row tplbar">
+      <input type="text" id="tplq" placeholder="Search templates">
+      <div class="seg" id="tplsrc"><button data-v="all" class="on">All</button><button data-v="mine">Mine</button><button data-v="premiere">Premiere</button></div>
+    </div>
+  </section>
+  <section class="grow">
+    <div class="cap"><span id="tplcap">Templates</span><span class="end" id="tplcount"></span></div>
+    <div class="grid" id="tpls"></div>
+  </section>
+  <footer>
+    <div class="actions">
+      <button id="tpladd" class="primary" disabled>Add at playhead</button>
+      <button id="tpldir" class="second">Open my templates</button>
+    </div>
+    <div class="status" id="tplstatus"></div>
+  </footer>
+</main>
+
+<!-- MOTION -->
+<main class="tab" id="tab-motion" hidden>
+  <section>
+    <div class="seg" id="mtag"><button data-v="all" class="on">All</button><button data-v="Intro">Intro</button><button data-v="Emphasis">Emphasis</button><button data-v="Showcase">Showcase</button><button data-v="Outro">Outro</button></div>
+  </section>
+  <section class="grow">
+    <div class="grid" id="motions"></div>
+    <div class="note">Keys go on the selected clips and replace that property's old keys. Undo with ⌘Z.</div>
+  </section>
+  <footer>
+    <div class="actions one"><button id="mapply" class="primary" disabled>Select a preset</button></div>
+    <div class="status" id="mstatus"></div>
+  </footer>
+</main>
+
+<!-- TEXT -->
+<main class="tab" id="tab-text" hidden>
+  <section>
+    <div class="cap"><span>Your line</span></div>
+    <input type="text" id="tline" value="Clone yourself in one day">
+  </section>
+  <section class="grow">
+    <div class="cap"><span>Styles</span><span class="end">live preview</span></div>
+    <div class="tlist" id="tstyles"></div>
+  </section>
+  <footer>
+    <div class="actions">
+      <button id="tadd" class="primary" disabled>Select a style</button>
+      <button id="tdir" class="second">Open text folder</button>
+    </div>
+    <div class="status" id="tstatus"></div>
+  </footer>
+</main>
+
+<!-- EFFECTS -->
+<main class="tab" id="tab-effects" hidden>
+  <section class="grow">
+    <div class="cap"><span>Recipes</span><span class="end">one click, selected clips</span></div>
+    <div class="list" id="fx"></div>
+  </section>
+  <footer>
+    <div class="actions one"><button id="fxapply" class="primary" disabled>Select a recipe</button></div>
+    <div class="status" id="fxstatus"></div>
+  </footer>
+</main>
+
+<script src="main.js"></script>
+</body>
+</html>

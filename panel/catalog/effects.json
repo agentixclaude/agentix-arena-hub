@@ -1,0 +1,9 @@
+{ "note": "Effect recipes: Premiere effect (by its English name) plus property values. Applied to the selected clips.",
+  "recipes": [
+  { "id": "soft-blur", "name": "Soft Blur", "tag": "Background", "desc": "Gaussian blur 25, edges kept clean.", "effect": "Gaussian Blur", "props": { "Blurriness": 25, "Repeat Edge Pixels": 1 } },
+  { "id": "mono", "name": "Mono", "tag": "Look", "desc": "Black & white.", "effect": "Black & White", "props": {} },
+  { "id": "letterbox", "name": "Letterbox", "tag": "Look", "desc": "Crop 12% top and bottom.", "effect": "Crop", "props": { "Top": 12, "Bottom": 12 } },
+  { "id": "sharpen", "name": "Crisp", "tag": "Fix", "desc": "Sharpen amount 30.", "effect": "Sharpen", "props": { "Sharpen Amount": 30 } },
+  { "id": "shadow", "name": "Card Shadow", "tag": "Showcase", "desc": "Soft drop shadow for Float Card.", "effect": "Drop Shadow", "props": { "Distance": 18, "Softness": 45 } },
+  { "id": "flip", "name": "Flip", "tag": "Fix", "desc": "Mirror horizontally.", "effect": "Horizontal Flip", "props": {} }
+] }

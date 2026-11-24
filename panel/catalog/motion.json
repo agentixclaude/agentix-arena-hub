@@ -1,0 +1,21 @@
+{ "note": "Keyframe presets for the selected clips. at: seconds from clip start, or 'end' / 'end-0.4' from clip end. Position is normalized (0.5,0.5 = centre). Bezier keys.",
+  "presets": [
+  { "id": "punch-in", "name": "Punch In", "tag": "Emphasis", "desc": "Quick 100 → 112% push on the first beat.",
+    "keys": [ { "comp": "Motion", "prop": "Scale", "at": 0, "v": 100 }, { "comp": "Motion", "prop": "Scale", "at": 0.35, "v": 112 } ] },
+  { "id": "zoom-reveal", "name": "Zoom Reveal", "tag": "Intro", "desc": "Starts at 135% and settles to frame while fading in.",
+    "keys": [ { "comp": "Motion", "prop": "Scale", "at": 0, "v": 135 }, { "comp": "Motion", "prop": "Scale", "at": 0.6, "v": 100 },
+              { "comp": "Opacity", "prop": "Opacity", "at": 0, "v": 0 }, { "comp": "Opacity", "prop": "Opacity", "at": 0.25, "v": 100 } ] },
+  { "id": "slide-up", "name": "Slide Up In", "tag": "Intro", "desc": "Rises from below frame into place.",
+    "keys": [ { "comp": "Motion", "prop": "Position", "at": 0, "v": [0.5, 1.1] }, { "comp": "Motion", "prop": "Position", "at": 0.45, "v": [0.5, 0.5] },
+              { "comp": "Opacity", "prop": "Opacity", "at": 0, "v": 0 }, { "comp": "Opacity", "prop": "Opacity", "at": 0.2, "v": 100 } ] },
+  { "id": "whip-in", "name": "Whip In", "tag": "Intro", "desc": "Fast entry from the right edge.",
+    "keys": [ { "comp": "Motion", "prop": "Position", "at": 0, "v": [1.6, 0.5] }, { "comp": "Motion", "prop": "Position", "at": 0.3, "v": [0.5, 0.5] } ] },
+  { "id": "float-card", "name": "Float Card", "tag": "Showcase", "desc": "Shrinks to a 78% card with a slight tilt. Put a background below it.",
+    "keys": [ { "comp": "Motion", "prop": "Scale", "at": 0, "v": 100 }, { "comp": "Motion", "prop": "Scale", "at": 0.5, "v": 78 },
+              { "comp": "Motion", "prop": "Rotation", "at": 0, "v": 0 }, { "comp": "Motion", "prop": "Rotation", "at": 0.5, "v": -2 } ] },
+  { "id": "ken-burns", "name": "Slow Push", "tag": "Showcase", "desc": "100 → 108% across the whole clip with a small drift.",
+    "keys": [ { "comp": "Motion", "prop": "Scale", "at": 0, "v": 100 }, { "comp": "Motion", "prop": "Scale", "at": "end", "v": 108 },
+              { "comp": "Motion", "prop": "Position", "at": 0, "v": [0.5, 0.5] }, { "comp": "Motion", "prop": "Position", "at": "end", "v": [0.485, 0.49] } ] },
+  { "id": "slide-out", "name": "Slide Out Left", "tag": "Outro", "desc": "Exits to the left in the last 0.4 s.",
+    "keys": [ { "comp": "Motion", "prop": "Position", "at": "end-0.4", "v": [0.5, 0.5] }, { "comp": "Motion", "prop": "Position", "at": "end", "v": [-0.6, 0.5] } ] }
+] }
