@@ -1,1 +1,1 @@
-{ "version": "0.3.0", "notes": "Text styles now apply to the Premiere caption track and to selected Graphics text clips" }
+{ "version": "0.4.0", "notes": "New Tools tab: adjustment layer (with an effect) and mattes / overlays over the selected section, never overwriting" }

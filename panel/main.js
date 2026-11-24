@@ -54,7 +54,8 @@
   function showTab(name) {
     Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === name); });
     Array.prototype.forEach.call(document.querySelectorAll('main.tab'), function (m) { m.hidden = m.id !== 'tab-' + name; });
-    if (!tabsSeen[name]) { tabsSeen[name] = true; if (name === 'templates') scanTemplates(); if (name === 'motion') renderMotion(); if (name === 'text') renderText(); if (name === 'effects') renderFx(); }
+    if (!tabsSeen[name]) { tabsSeen[name] = true; if (name === 'templates') scanTemplates(); if (name === 'motion') renderMotion(); if (name === 'text') renderText(); if (name === 'effects') renderFx(); if (name === 'tools') renderTools(); }
+    if (name === 'tools' && tabsSeen.tools) rangeInfo();
     if ((name === 'effects' || name === 'text') && (!frame.url || /^data:/.test(frame.url))) grabFrame(true);
     store('ah:tab', name);
     refresh();
@@ -754,6 +755,128 @@
   }
   $('fxapply').addEventListener('click', applyFx);
 
+  // ================= TOOLS =================
+  // Smart place over the selected section: adjustment layer (optionally with an Effects recipe) or a generated matte / overlay.
+  var ADJ_TEMPLATE = path.join(EXT_DIR, 'assets', 'arena-adjustment.prproj');
+  var tools = { range: load('ah:trange', 'selection'), per: load('ah:tper', 'one'), mtype: load('ah:mtype', 'solid'),
+    m: Object.assign({ a: '#000000', b: '#1b2a4a', alpha: 100, strength: 70, bars: 12, platform: 'reels', dir: 'vertical' }, load('ah:mprops', {})) };
+  var MPROPS = {
+    solid:    [['a', 'Colour', 'color'], ['alpha', 'Opacity', 'range', 0, 100]],
+    gradient: [['a', 'Top', 'color'], ['b', 'Bottom', 'color'], ['alpha', 'Opacity', 'range', 0, 100], ['dir', 'Direction', 'seg', [['vertical', 'Vertical'], ['diagonal', 'Diagonal']]]],
+    vignette: [['a', 'Colour', 'color'], ['strength', 'Strength', 'range', 10, 100]],
+    bars:     [['a', 'Colour', 'color'], ['bars', 'Bar size', 'range', 2, 30]],
+    safe:     [['platform', 'Platform', 'seg', [['reels', 'Reels'], ['tiktok', 'TikTok'], ['shorts', 'Shorts']]]]
+  };
+  function toolsArgs() { return q(tools.range === 'inout' ? 'inout' : 'selection') + ',' + (tools.per === 'each' ? 'true' : 'false'); }
+  function paintSegs() {
+    [['trange', tools.range], ['tper', tools.per], ['mtype', tools.mtype]].forEach(function (p) {
+      Array.prototype.forEach.call(document.querySelectorAll('#' + p[0] + ' button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === p[1]); });
+    });
+    $('tper').style.opacity = tools.range === 'inout' ? .35 : 1;
+  }
+  async function rangeInfo() {
+    if ($('tab-tools').hidden) return;
+    var r = await jsx('ahRangeInfo(' + toolsArgs() + ')');
+    if (r.error) { $('trinfo').textContent = r.error; $('trinfo').className = 'end tone-warn'; return; }
+    var g = r.ranges, a = g[0], z = g[g.length - 1], tr = g.map(function (x) { return x.track < 0 ? 'new track' : 'V' + (x.track + 1); }).filter(function (v, i, arr) { return arr.indexOf(v) === i; });
+    $('trinfo').className = 'end';
+    $('trinfo').textContent = (g.length > 1 ? g.length + ' sections · ' : '') + fmtT(a.start) + '.' + Math.floor(a.start % 1 * 10) + ' – ' + fmtT(z.end) + '.' + Math.floor(z.end % 1 * 10) + ' → ' + tr.join(', ');
+  }
+  function renderTools() {
+    var sel = $('adjfx');
+    sel.innerHTML = '<option value="">None (empty adjustment layer)</option>' + ['Trending', 'In / Out', 'Looks', 'Arena'].map(function (g) {
+      return '<optgroup label="' + g + '">' + fx.list.filter(function (r) { return r.group === g && !(r.keys || []).some(function (k) { return k.comp === 'Motion'; }); })      // Motion keys move the layer itself, not what is under it
+        .map(function (r) { return '<option value="' + esc(r.id) + '">' + esc(r.name) + '</option>'; }).join('') + '</optgroup>';
+    }).join('');
+    sel.value = load('ah:adjfx', '');
+    sel.addEventListener('change', function () { store('ah:adjfx', sel.value); });
+    paintSegs(); renderMatteProps(); rangeInfo();
+  }
+  segValue('trange', function (v) { tools.range = v; store('ah:trange', v); paintSegs(); rangeInfo(); });
+  segValue('tper', function (v) { tools.per = v; store('ah:tper', v); paintSegs(); rangeInfo(); });
+  segValue('mtype', function (v) { tools.mtype = v; store('ah:mtype', v); renderMatteProps(); });
+
+  function renderMatteProps() {
+    var box = $('mprops'), m = tools.m;
+    box.innerHTML = MPROPS[tools.mtype].map(function (d, i) {
+      var c = d[2] === 'color' ? '<input type="color" data-i="' + i + '" value="' + m[d[0]] + '">'
+        : d[2] === 'range' ? '<input type="range" data-i="' + i + '" min="' + d[3] + '" max="' + d[4] + '" value="' + m[d[0]] + '"><span class="val">' + m[d[0]] + '%</span>'
+        : '<div class="seg" data-i="' + i + '">' + d[3].map(function (o) { return '<button data-v="' + o[0] + '" class="' + (m[d[0]] === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
+      return '<label>' + d[1] + '</label><div class="ctl">' + c + '</div>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('input'), function (el) {
+      var d = MPROPS[tools.mtype][+el.getAttribute('data-i')];
+      el.addEventListener('input', function () { m[d[0]] = d[2] === 'range' ? +el.value : el.value; if (d[2] === 'range') el.nextSibling.textContent = el.value + '%'; store('ah:mprops', m); drawMatte($('mprev'), 160, 160 * frameWH()[1] / frameWH()[0]); });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('.seg'), function (sg) {
+      var d = MPROPS[tools.mtype][+sg.getAttribute('data-i')];
+      Array.prototype.forEach.call(sg.querySelectorAll('button'), function (b) { b.addEventListener('click', function () { m[d[0]] = b.getAttribute('data-v'); store('ah:mprops', m); renderMatteProps(); }); });
+    });
+    var wh = frameWH(), pv = $('mprev'); pv.width = 160; pv.height = Math.round(160 * wh[1] / wh[0]);
+    drawMatte(pv, pv.width, pv.height);
+  }
+  function drawMatte(cv, W, H) {
+    var x = cv.getContext('2d'), m = tools.m, t = tools.mtype;
+    cv.width = Math.round(W); cv.height = Math.round(H); W = cv.width; H = cv.height;
+    x.clearRect(0, 0, W, H);
+    if (t === 'solid') { x.globalAlpha = m.alpha / 100; x.fillStyle = m.a; x.fillRect(0, 0, W, H); }
+    if (t === 'gradient') {
+      var g = m.dir === 'diagonal' ? x.createLinearGradient(0, 0, W, H) : x.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, m.a); g.addColorStop(1, m.b); x.globalAlpha = m.alpha / 100; x.fillStyle = g; x.fillRect(0, 0, W, H);
+    }
+    if (t === 'vignette') {
+      var r = x.createRadialGradient(W / 2, H / 2, Math.min(W, H) * (0.62 - m.strength / 400), W / 2, H / 2, Math.hypot(W, H) / 2);
+      r.addColorStop(0, hexA(m.a, 0)); r.addColorStop(1, hexA(m.a, Math.min(1, m.strength / 85)));
+      x.fillStyle = r; x.fillRect(0, 0, W, H);
+    }
+    if (t === 'bars') { var bh = H * m.bars / 100; x.fillStyle = m.a; x.fillRect(0, 0, W, bh); x.fillRect(0, H - bh, W, bh); }
+    if (t === 'safe') {
+      // where each app's UI sits on a 9:16 frame (approximate), shaded so text and faces stay clear of it
+      var Z = { reels: { top: 0.14, bottom: 0.35, right: 0.15 }, tiktok: { top: 0.12, bottom: 0.30, right: 0.16 }, shorts: { top: 0.12, bottom: 0.27, right: 0.14 } }[m.platform];
+      x.fillStyle = 'rgba(255, 64, 64, .28)';
+      x.fillRect(0, 0, W, H * Z.top); x.fillRect(0, H * (1 - Z.bottom), W, H * Z.bottom); x.fillRect(W * (1 - Z.right), H * Z.top, W * Z.right, H * (1 - Z.top - Z.bottom));
+      x.strokeStyle = 'rgba(255, 255, 255, .9)'; x.lineWidth = Math.max(1, W / 360); x.setLineDash([W / 60, W / 90]);
+      x.strokeRect(W * 0.06, H * Z.top, W * (0.94 - Z.right) - W * 0.06, H * (1 - Z.top - Z.bottom));
+    }
+    x.globalAlpha = 1;
+  }
+  function hexA(hex, a) { var n = parseInt(String(hex).replace('#', ''), 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')'; }
+
+  async function toolsRun(fn) {
+    if (busy) return; busy = true; $('adjgo').disabled = $('mattego').disabled = true;
+    try { await refresh(); await fn(); } catch (e) { setStatus('toolstatus', e.message || String(e), 'bad'); }
+    busy = false; $('adjgo').disabled = $('mattego').disabled = false; rangeInfo();
+  }
+  function placedMsg(what, r) {
+    var where = (r.placed || []).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ');
+    return r.placed && r.placed.length ? what + ' on ' + where + (r.placed.length > 1 ? ' (' + r.placed.length + ')' : '') + (r.notes && r.notes.length ? '. ' + r.notes.join(' ') : '.') : 'Nothing placed: ' + ((r.notes || []).join(' ') || 'no room');
+  }
+  $('adjgo').addEventListener('click', function () {
+    toolsRun(async function () {
+      var id = $('adjfx').value, rec = id ? fx.list.filter(function (r) { return r.id === id; })[0] : null;
+      var r = await jsx('ahAddAdjust(' + toolsArgs() + ',' + q(ADJ_TEMPLATE) + ',' + (rec ? q(JSON.stringify(rec)) : '""') + ')');
+      if (r.error === 'NOADJ') return setStatus('toolstatus', 'This project has no adjustment layer yet. Make one once (File › New › Adjustment Layer) and Arena will reuse it from then on.', 'warn');
+      if (r.error) return setStatus('toolstatus', r.error, 'bad');
+      var msg = placedMsg('Adjustment layer' + (rec ? ' with ' + rec.name : ''), r);
+      if (r.fxError) msg += ' Effect not added: ' + r.fxError;
+      else if (r.missing && r.missing.length) msg += ' Not set: ' + r.missing.join(', ');
+      setStatus('toolstatus', msg, r.placed && r.placed.length && !r.fxError ? 'ok' : 'warn');
+    });
+  });
+  $('mattego').addEventListener('click', function () {
+    toolsRun(async function () {
+      if (!info.sequence) throw new Error('Open a sequence first.');
+      var wh = frameWH(), cv = document.createElement('canvas'); drawMatte(cv, wh[0], wh[1]);
+      var m = tools.m, key = tools.mtype + '-' + [m.a, m.b, m.alpha, m.strength, m.bars, m.platform, m.dir].join('-').replace(/#/g, '') + '-' + wh[0] + 'x' + wh[1];
+      var out = path.join(assetDir('Mattes'), safeName(key) + '.png');
+      if (!fs.existsSync(out)) fs.writeFileSync(out, await blobBuf(cv));
+      var label = { solid: 'Colour matte', gradient: 'Gradient', vignette: 'Vignette', bars: 'Bars', safe: 'Safe-zone guide' }[tools.mtype];
+      var r = await jsx('ahAddStill(' + q(out) + ',' + toolsArgs() + ',"Arena Tools")');
+      if (r.error) return setStatus('toolstatus', r.error, 'bad');
+      setStatus('toolstatus', placedMsg(label, r) + (tools.mtype === 'safe' ? ' Turn it off before export.' : ''), r.placed && r.placed.length ? 'ok' : 'warn');
+    });
+  });
+
   // ---------------- self-update (GitHub) ----------------
   function localVersion() { try { return JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'version.json'), 'utf8')).version; } catch (e) { return '0.0.0'; } }
   function newer(a, b) { var x = String(a).split('.'), y = String(b).split('.'); for (var i = 0; i < 3; i++) { var d = (parseInt(x[i], 10) || 0) - (parseInt(y[i], 10) || 0); if (d) return d > 0; } return false; }
@@ -799,5 +922,5 @@
   renderDrops();
   showTab(load('ah:tab', 'drop'));
   var lastFocus = 0;
-  window.addEventListener('focus', function () { var t = Date.now(); if (busy || t - lastFocus < 1200) return; lastFocus = t; refresh();  });
+  window.addEventListener('focus', function () { var t = Date.now(); if (busy || t - lastFocus < 1200) return; lastFocus = t; refresh().then(rangeInfo);  });
 })();

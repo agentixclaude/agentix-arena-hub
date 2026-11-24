@@ -26,6 +26,7 @@
   <button data-tab="motion">Motion</button>
   <button data-tab="text">Text</button>
   <button data-tab="effects">Effects</button>
+  <button data-tab="tools">Tools</button>
 </nav>
 
 <!-- DROP -->
@@ -132,6 +133,39 @@
   <footer>
     <div class="actions one"><button id="fxapply" class="primary" disabled>Select an effect</button></div>
     <div class="status" id="fxstatus"></div>
+  </footer>
+</main>
+
+<!-- TOOLS -->
+<main class="tab" id="tab-tools" hidden>
+  <section>
+    <div class="cap"><span>Section</span><span class="end" id="trinfo"></span></div>
+    <div class="row toolrow">
+      <div class="seg" id="trange"><button data-v="selection" class="on">Selected clips</button><button data-v="inout">In – Out</button></div>
+      <div class="seg" id="tper"><button data-v="one" class="on">One layer</button><button data-v="each">Per clip</button></div>
+    </div>
+    <div class="note">Lands on the first track above that is empty for the whole section. Nothing is overwritten; a new track is added if every one is busy.</div>
+  </section>
+  <section>
+    <div class="cap"><span>Adjustment layer</span></div>
+    <div class="props">
+      <label>With effect</label><div class="ctl"><select id="adjfx"></select></div>
+    </div>
+  </section>
+  <section>
+    <div class="cap"><span>Matte &amp; overlays</span></div>
+    <div class="seg" id="mtype"><button data-v="solid" class="on">Solid</button><button data-v="gradient">Gradient</button><button data-v="vignette">Vignette</button><button data-v="bars">Bars</button><button data-v="safe">Safe zone</button></div>
+    <div class="mrow">
+      <canvas id="mprev" width="160" height="160"></canvas>
+      <div class="props" id="mprops"></div>
+    </div>
+  </section>
+  <footer>
+    <div class="actions">
+      <button id="adjgo" class="primary">Add adjustment layer</button>
+      <button id="mattego" class="second">Add matte</button>
+    </div>
+    <div class="status" id="toolstatus"></div>
   </footer>
 </main>
 
