@@ -1,9 +1,598 @@
-{ "note": "Effect recipes: Premiere effect (by its English name) plus property values. Applied to the selected clips.",
-  "recipes": [
-  { "id": "soft-blur", "name": "Soft Blur", "tag": "Background", "desc": "Gaussian blur 25, edges kept clean.", "effect": "Gaussian Blur", "props": { "Blurriness": 25, "Repeat Edge Pixels": 1 } },
-  { "id": "mono", "name": "Mono", "tag": "Look", "desc": "Black & white.", "effect": "Black & White", "props": {} },
-  { "id": "letterbox", "name": "Letterbox", "tag": "Look", "desc": "Crop 12% top and bottom.", "effect": "Crop", "props": { "Top": 12, "Bottom": 12 } },
-  { "id": "sharpen", "name": "Crisp", "tag": "Fix", "desc": "Sharpen amount 30.", "effect": "Sharpen", "props": { "Sharpen Amount": 30 } },
-  { "id": "shadow", "name": "Card Shadow", "tag": "Showcase", "desc": "Soft drop shadow for Float Card.", "effect": "Drop Shadow", "props": { "Distance": 18, "Softness": 45 } },
-  { "id": "flip", "name": "Flip", "tag": "Fix", "desc": "Mirror horizontally.", "effect": "Horizontal Flip", "props": {} }
-] }
+{
+ "note": "Effect recipes for the selected clips. fx: Premiere effects by English name (+ values). keys: optional keyframes (comp = effect or Motion/Opacity; at = seconds from clip start or 'end-0.3'). pv: preview class.",
+ "recipes": [
+  {
+   "id": "shake",
+   "name": "Camera Shake",
+   "group": "Trending",
+   "desc": "Handheld shake. Premiere's new Camera Shake.",
+   "pv": "shake",
+   "fx": [
+    {
+     "effect": "Camera Shake",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "rgb-split",
+   "name": "RGB Split",
+   "group": "Trending",
+   "desc": "Colour channels pulled apart.",
+   "pv": "rgb-split",
+   "fx": [
+    {
+     "effect": "RGB Split",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "zoom-blur",
+   "name": "Zoom Blur",
+   "group": "Trending",
+   "desc": "Radial speed blur from the centre.",
+   "pv": "zoom-blur",
+   "fx": [
+    {
+     "effect": "Zoom Blur",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "light-leak",
+   "name": "Light Leaks",
+   "group": "Trending",
+   "desc": "Warm film light washing across.",
+   "pv": "light-leak",
+   "fx": [
+    {
+     "effect": "Light Leaks",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "glow",
+   "name": "Glow",
+   "group": "Trending",
+   "desc": "Soft bloom on highlights (Wonder Glow).",
+   "pv": "glow",
+   "fx": [
+    {
+     "effect": "Wonder Glow",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "rays",
+   "name": "God Rays",
+   "group": "Trending",
+   "desc": "Volumetric light rays.",
+   "pv": "rays",
+   "fx": [
+    {
+     "effect": "Volumetric Rays",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "glint",
+   "name": "Sparkle",
+   "group": "Trending",
+   "desc": "Star glints on bright points.",
+   "pv": "glint",
+   "fx": [
+    {
+     "effect": "Glint",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "glitch",
+   "name": "Glitch",
+   "group": "Trending",
+   "desc": "Digital glitch + channel split.",
+   "pv": "glitch",
+   "fx": [
+    {
+     "effect": "VR Digital Glitch",
+     "props": {}
+    },
+    {
+     "effect": "RGB Split",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "vhs",
+   "name": "Retro VHS",
+   "group": "Trending",
+   "desc": "Noise, channel bleed and soft chroma.",
+   "pv": "vhs",
+   "fx": [
+    {
+     "effect": "Noise",
+     "props": {}
+    },
+    {
+     "effect": "RGB Split",
+     "props": {}
+    },
+    {
+     "effect": "Channel Blur",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "wiggle",
+   "name": "Wiggle",
+   "group": "Trending",
+   "desc": "Organic drifting wobble.",
+   "pv": "wiggle",
+   "fx": [
+    {
+     "effect": "Wiggle",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "spin-in",
+   "name": "Spin In",
+   "group": "In / Out",
+   "desc": "Spins into place (Premiere Spin).",
+   "pv": "spin-in",
+   "fx": [
+    {
+     "effect": "Spin",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "grow-in",
+   "name": "Grow In",
+   "group": "In / Out",
+   "desc": "Grows from the centre (Premiere Grow).",
+   "pv": "grow-in",
+   "fx": [
+    {
+     "effect": "Grow",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "shrink-out",
+   "name": "Shrink Out",
+   "group": "In / Out",
+   "desc": "Shrinks away (Premiere Shrink).",
+   "pv": "shrink-out",
+   "fx": [
+    {
+     "effect": "Shrink",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "flash-in",
+   "name": "Flash In",
+   "group": "In / Out",
+   "desc": "White flash that settles in 0.3 s.",
+   "pv": "flash-in",
+   "fx": [
+    {
+     "effect": "Brightness & Contrast",
+     "props": {}
+    }
+   ],
+   "keys": [
+    {
+     "comp": "Brightness & Contrast",
+     "prop": "Brightness",
+     "at": 0,
+     "v": 100
+    },
+    {
+     "comp": "Brightness & Contrast",
+     "prop": "Brightness",
+     "at": 0.3,
+     "v": 0
+    }
+   ]
+  },
+  {
+   "id": "flash-out",
+   "name": "Flash Out",
+   "group": "In / Out",
+   "desc": "Burns to white in the last 0.3 s.",
+   "pv": "flash-out",
+   "fx": [
+    {
+     "effect": "Brightness & Contrast",
+     "props": {}
+    }
+   ],
+   "keys": [
+    {
+     "comp": "Brightness & Contrast",
+     "prop": "Brightness",
+     "at": "end-0.3",
+     "v": 0
+    },
+    {
+     "comp": "Brightness & Contrast",
+     "prop": "Brightness",
+     "at": "end",
+     "v": 100
+    }
+   ]
+  },
+  {
+   "id": "blur-in",
+   "name": "Blur In",
+   "group": "In / Out",
+   "desc": "Sharpens from a heavy blur.",
+   "pv": "blur-in",
+   "fx": [
+    {
+     "effect": "Gaussian Blur (Legacy)",
+     "props": {
+      "Repeat Edge Pixels": 1
+     }
+    }
+   ],
+   "keys": [
+    {
+     "comp": "Gaussian Blur (Legacy)",
+     "prop": "Blurriness",
+     "at": 0,
+     "v": 80
+    },
+    {
+     "comp": "Gaussian Blur (Legacy)",
+     "prop": "Blurriness",
+     "at": 0.45,
+     "v": 0
+    }
+   ]
+  },
+  {
+   "id": "whip-zoom",
+   "name": "Whip Zoom",
+   "group": "In / Out",
+   "desc": "Zooms in from 130% with zoom blur.",
+   "pv": "whip-zoom",
+   "fx": [
+    {
+     "effect": "Zoom Blur",
+     "props": {}
+    }
+   ],
+   "keys": [
+    {
+     "comp": "Motion",
+     "prop": "Scale",
+     "at": 0,
+     "v": 130
+    },
+    {
+     "comp": "Motion",
+     "prop": "Scale",
+     "at": 0.35,
+     "v": 100
+    }
+   ]
+  },
+  {
+   "id": "mono",
+   "name": "Mono",
+   "group": "Looks",
+   "desc": "Black & white.",
+   "pv": "mono",
+   "fx": [
+    {
+     "effect": "Black & White",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "film",
+   "name": "Film Look",
+   "group": "Looks",
+   "desc": "Grain + vignette.",
+   "pv": "film",
+   "fx": [
+    {
+     "effect": "Noise",
+     "props": {}
+    },
+    {
+     "effect": "Vignette",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "vignette",
+   "name": "Vignette",
+   "group": "Looks",
+   "desc": "Darkened edges.",
+   "pv": "vignette",
+   "fx": [
+    {
+     "effect": "Vignette",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "dreamy",
+   "name": "Dreamy",
+   "group": "Looks",
+   "desc": "Glow with soft edges.",
+   "pv": "dreamy",
+   "fx": [
+    {
+     "effect": "Wonder Glow",
+     "props": {}
+    },
+    {
+     "effect": "Vignette",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "bg-blur",
+   "name": "Background Blur",
+   "group": "Looks",
+   "desc": "Blur 40 with clean edges, for behind a card.",
+   "pv": "bg-blur",
+   "fx": [
+    {
+     "effect": "Gaussian Blur (Legacy)",
+     "props": {
+      "Blurriness": 40,
+      "Repeat Edge Pixels": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "letterbox",
+   "name": "Letterbox",
+   "group": "Looks",
+   "desc": "Cinema bars, 12% top and bottom.",
+   "pv": "letterbox",
+   "fx": [
+    {
+     "effect": "Crop (Legacy)",
+     "props": {
+      "Top": 12,
+      "Bottom": 12
+     }
+    }
+   ]
+  },
+  {
+   "id": "posterize",
+   "name": "Posterize",
+   "group": "Looks",
+   "desc": "Flat graphic colour bands.",
+   "pv": "posterize",
+   "fx": [
+    {
+     "effect": "Posterize",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "crisp",
+   "name": "Crisp",
+   "group": "Looks",
+   "desc": "Sharpen amount 30.",
+   "pv": "crisp",
+   "fx": [
+    {
+     "effect": "Sharpen",
+     "props": {
+      "Sharpen Amount": 30
+     }
+    }
+   ]
+  },
+  {
+   "id": "beat-pulse",
+   "name": "Beat Pulse",
+   "group": "Arena",
+   "desc": "Scale kick 100 \u2192 110 \u2192 100 on the cut. Put it on a beat.",
+   "pv": "beat-pulse",
+   "fx": [],
+   "keys": [
+    {
+     "comp": "Motion",
+     "prop": "Scale",
+     "at": 0,
+     "v": 100
+    },
+    {
+     "comp": "Motion",
+     "prop": "Scale",
+     "at": 0.1,
+     "v": 110
+    },
+    {
+     "comp": "Motion",
+     "prop": "Scale",
+     "at": 0.32,
+     "v": 100
+    }
+   ]
+  },
+  {
+   "id": "shake-hit",
+   "name": "Shake Hit",
+   "group": "Arena",
+   "desc": "Short hard shake on impact, then still.",
+   "pv": "shake-hit",
+   "fx": [],
+   "keys": [
+    {
+     "comp": "Motion",
+     "prop": "Position",
+     "at": 0,
+     "v": [
+      0.5,
+      0.5
+     ],
+     "interp": "linear"
+    },
+    {
+     "comp": "Motion",
+     "prop": "Position",
+     "at": 0.04,
+     "v": [
+      0.508,
+      0.494
+     ],
+     "interp": "linear"
+    },
+    {
+     "comp": "Motion",
+     "prop": "Position",
+     "at": 0.08,
+     "v": [
+      0.493,
+      0.506
+     ],
+     "interp": "linear"
+    },
+    {
+     "comp": "Motion",
+     "prop": "Position",
+     "at": 0.12,
+     "v": [
+      0.506,
+      0.497
+     ],
+     "interp": "linear"
+    },
+    {
+     "comp": "Motion",
+     "prop": "Position",
+     "at": 0.16,
+     "v": [
+      0.495,
+      0.504
+     ],
+     "interp": "linear"
+    },
+    {
+     "comp": "Motion",
+     "prop": "Position",
+     "at": 0.2,
+     "v": [
+      0.504,
+      0.498
+     ],
+     "interp": "linear"
+    },
+    {
+     "comp": "Motion",
+     "prop": "Position",
+     "at": 0.26,
+     "v": [
+      0.498,
+      0.502
+     ],
+     "interp": "linear"
+    },
+    {
+     "comp": "Motion",
+     "prop": "Position",
+     "at": 0.34,
+     "v": [
+      0.5,
+      0.5
+     ],
+     "interp": "linear"
+    }
+   ]
+  },
+  {
+   "id": "zoom-punch",
+   "name": "Zoom Punch",
+   "group": "Arena",
+   "desc": "Snap to 118% and hold.",
+   "pv": "zoom-punch",
+   "fx": [],
+   "keys": [
+    {
+     "comp": "Motion",
+     "prop": "Scale",
+     "at": 0,
+     "v": 100
+    },
+    {
+     "comp": "Motion",
+     "prop": "Scale",
+     "at": 0.16,
+     "v": 118
+    }
+   ]
+  },
+  {
+   "id": "strobe",
+   "name": "Strobe",
+   "group": "Arena",
+   "desc": "Flashing strobe light.",
+   "pv": "strobe",
+   "fx": [
+    {
+     "effect": "Strobe Light",
+     "props": {}
+    }
+   ]
+  },
+  {
+   "id": "card-shadow",
+   "name": "Card Shadow",
+   "group": "Arena",
+   "desc": "Soft drop shadow for floating cards.",
+   "pv": "card-shadow",
+   "fx": [
+    {
+     "effect": "Drop Shadow",
+     "props": {
+      "Distance": 18,
+      "Softness": 45
+     }
+    }
+   ]
+  },
+  {
+   "id": "flip",
+   "name": "Flip",
+   "group": "Arena",
+   "desc": "Mirror horizontally.",
+   "pv": "flip",
+   "fx": [
+    {
+     "effect": "Horizontal Flip",
+     "props": {}
+    }
+   ]
+  }
+ ]
+}

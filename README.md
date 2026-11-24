@@ -4,11 +4,11 @@ Premiere Pro panel (CEP) for the UGENTIC / Soaring Media edit team. One panel, f
 
 | Tab | What it does |
 |---|---|
-| **Drop** | Paste an image, a copied file or a link (image, video, YouTube, Instagram, TikTok, any page with a share image). It lands in `~/Arena Hub/Drops`, the **Arena Drops** bin, and optionally on the timeline at the playhead. webp/avif/heic are converted to PNG. Video pages need `yt-dlp`. |
-| **Templates** | Every `.mogrt` on the Mac: yours (`~/Arena Hub/Templates` + Adobe's template library) and Premiere's own. Thumbnails, hover preview, search. Double-click or **Add** drops it at the playhead. |
-| **Motion** | Keyframe presets (Punch In, Zoom Reveal, Slide Up, Whip In, Float Card, Slow Push, Slide Out) on the selected clips. Live preview in the card. |
-| **Text** | Caption styles previewed on your own line. A style is usable once its `.mogrt` is in `~/Arena Hub/Text`. |
-| **Effects** | One-click effect recipes on the selected clips. |
+| **Drop** | Paste, drag or link anything: images (incl. webp/avif/heic → PNG), video (VP9/AV1/webm/mkv → H.264), audio, whole folders, Google Drive / Dropbox / OneDrive links, and social links via yt-dlp (YouTube, Instagram, TikTok, X, Facebook, Pinterest, LinkedIn, Reddit, Vimeo…; retries with your Chrome login, falls back to the post image). Saved to `<project folder>/Assets/Drops`, imported to the **Arena Drops** bin, optionally placed at the playhead. |
+| **Templates** | The team's picks from the Adobe template library (Carousel 01–05, 1–4) with thumbnails and hover preview. |
+| **Motion** | Keyframe presets on the selected clips (parked for now). |
+| **Text** | 13 caption styles (incl. box, pill, highlight-box, box-words) drawn on canvas with full properties (font, weight, size, case, colours, outline, shadow, box, corners, padding, position, width, stagger, duration). Live preview on the playhead frame. **Render to timeline** writes ProRes 4444 with alpha to `<project>/Assets/Text` and places it at the playhead. |
+| **Effects** | 31 CapCut-style recipes in four groups (Trending, In / Out, Looks, Arena) built on Premiere 2027's new effects plus keyframed ones, each with a live preview on the playhead frame. |
 
 Install: `curl -fsSL https://raw.githubusercontent.com/agentixclaude/agentix-arena-hub/main/install.sh | bash`, then restart Premiere and open **Window › Extensions › Agentix Arena Hub**. The panel updates itself from this repo (`panel/version.json`).
 

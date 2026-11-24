@@ -33,15 +33,16 @@
   <section>
     <div class="cap"><span>Paste or drop</span></div>
     <div id="dropzone" class="dropzone" tabindex="0">
-      <b>Paste an image, a file or a link</b>
-      <span>⌘V here, the Paste button, or drag files in</span>
+      <b>Paste or drop anything</b>
+      <span>Image · video · audio · Drive / Dropbox link · YouTube, Instagram, TikTok, X, Facebook, Pinterest…</span>
     </div>
     <div class="row urlrow">
-      <input type="text" id="url" placeholder="https://… image, video, YouTube, Instagram, any page">
+      <input type="text" id="url" placeholder="Paste one or more links">
       <button id="urlgo">Get</button>
     </div>
     <div class="row opts">
       <label><input type="checkbox" id="place" checked>Place at playhead</label>
+      <span class="muted" id="dropto"></span>
     </div>
   </section>
   <section class="grow">
@@ -51,7 +52,7 @@
   <footer>
     <div class="actions">
       <button id="paste" class="primary">Paste from clipboard</button>
-      <button id="dropsdir" class="second">Open drops folder</button>
+      <button id="dropsdir" class="second">Open Drops folder</button>
     </div>
     <div class="status" id="dropstatus"></div>
   </footer>
@@ -59,20 +60,14 @@
 
 <!-- TEMPLATES -->
 <main class="tab" id="tab-templates" hidden>
-  <section>
-    <div class="row tplbar">
-      <input type="text" id="tplq" placeholder="Search templates">
-      <div class="seg" id="tplsrc"><button data-v="all" class="on">All</button><button data-v="mine">Mine</button><button data-v="premiere">Premiere</button></div>
-    </div>
-  </section>
   <section class="grow">
-    <div class="cap"><span id="tplcap">Templates</span><span class="end" id="tplcount"></span></div>
+    <div class="cap"><span>Templates</span><span class="end" id="tplcount"></span></div>
     <div class="grid" id="tpls"></div>
   </section>
   <footer>
     <div class="actions">
-      <button id="tpladd" class="primary" disabled>Add at playhead</button>
-      <button id="tpldir" class="second">Open my templates</button>
+      <button id="tpladd" class="primary" disabled>Select a template</button>
+      <button id="tplrescan" class="second">Refresh</button>
     </div>
     <div class="status" id="tplstatus"></div>
   </footer>
@@ -96,16 +91,25 @@
 <!-- TEXT -->
 <main class="tab" id="tab-text" hidden>
   <section>
-    <div class="cap"><span>Your line</span></div>
-    <input type="text" id="tline" value="Clone yourself in one day">
+    <div class="stage" id="tstage"><canvas id="tbig"></canvas></div>
+    <div class="row spread stagebar">
+      <div class="seg" id="tbg"><button data-v="frame" class="on">Frame</button><button data-v="dark">Dark</button><button data-v="check">Alpha</button></div>
+      <div class="row"><span class="muted" id="tsize"></span><button id="tgrab" class="ghost" title="Use the frame under the playhead">Grab frame</button></div>
+    </div>
+    <textarea id="tline" rows="2">Clone yourself in one day</textarea>
   </section>
-  <section class="grow">
-    <div class="cap"><span>Styles</span><span class="end">live preview</span></div>
-    <div class="tlist" id="tstyles"></div>
+  <section>
+    <div class="cap"><span>Styles</span><span class="end" id="tstylename"></span></div>
+    <div class="sgrid" id="tstyles"></div>
+  </section>
+  <section>
+    <div class="cap"><span>Properties</span><button class="link end" id="treset">Reset</button></div>
+    <div class="props" id="tprops"></div>
   </section>
   <footer>
+    <div class="progress" id="tprog" hidden><div></div></div>
     <div class="actions">
-      <button id="tadd" class="primary" disabled>Select a style</button>
+      <button id="trender" class="primary">Render to timeline</button>
       <button id="tdir" class="second">Open text folder</button>
     </div>
     <div class="status" id="tstatus"></div>
@@ -114,16 +118,20 @@
 
 <!-- EFFECTS -->
 <main class="tab" id="tab-effects" hidden>
+  <section>
+    <div class="seg" id="fxgroup"><button data-v="Trending" class="on">Trending</button><button data-v="In / Out">In / Out</button><button data-v="Looks">Looks</button><button data-v="Arena">Arena</button></div>
+    <div class="row spread fxbar"><span class="muted" id="fxframe">Preview on a sample frame</span><button id="fxgrab" class="ghost">Grab playhead frame</button></div>
+  </section>
   <section class="grow">
-    <div class="cap"><span>Recipes</span><span class="end">one click, selected clips</span></div>
-    <div class="list" id="fx"></div>
+    <div class="grid fxgrid" id="fx"></div>
   </section>
   <footer>
-    <div class="actions one"><button id="fxapply" class="primary" disabled>Select a recipe</button></div>
+    <div class="actions one"><button id="fxapply" class="primary" disabled>Select an effect</button></div>
     <div class="status" id="fxstatus"></div>
   </footer>
 </main>
 
+<script src="lib/textfx.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

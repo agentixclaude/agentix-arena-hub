@@ -1,9 +1,0 @@
-{ "note": "Caption styles. Preview runs in the panel; apply needs the style's .mogrt (file: path inside ~/Arena Hub/Text).",
-  "styles": [
-  { "id": "rise", "name": "Word Rise", "desc": "Words rise 2 frames apart, strong ease-out.", "file": "Word Rise.mogrt" },
-  { "id": "pop", "name": "Pop", "desc": "Each word pops from 90% with a small overshoot.", "file": "Pop.mogrt" },
-  { "id": "karaoke", "name": "Highlight", "desc": "Spoken word lights up in the accent colour.", "file": "Highlight.mogrt" },
-  { "id": "mask", "name": "Mask Reveal", "desc": "Line slides up out of a hard mask.", "file": "Mask Reveal.mogrt" },
-  { "id": "blur", "name": "Focus In", "desc": "Words sharpen from a blur.", "file": "Focus In.mogrt" },
-  { "id": "type", "name": "Type On", "desc": "Characters type on with a caret.", "file": "Type On.mogrt" }
-] }

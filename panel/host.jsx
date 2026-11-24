@@ -6,9 +6,10 @@ function ahInfo() {
     try {
         var p = app.project;
         if (!p || !p.path) { return '{"open":false}'; }
-        var s = p.activeSequence, sel = s ? ahSelected(s).length : 0;
-        return '{"open":true,"project":"' + ahEsc(p.name) + '","sequence":"' + (s ? ahEsc(s.name) : '') + '","selected":' + sel +
-            ',"playhead":' + (s ? s.getPlayerPosition().seconds : 0) + '}';
+        var s = p.activeSequence, sel = s ? ahSelected(s).length : 0, w = 0, h = 0, fr = 0;
+        if (s) { try { w = s.frameSizeHorizontal; h = s.frameSizeVertical; fr = s.getSettings().videoFrameRate.seconds; } catch (e1) {} }
+        return '{"open":true,"project":"' + ahEsc(p.name) + '","path":"' + ahEsc(p.path) + '","sequence":"' + (s ? ahEsc(s.name) : '') + '","selected":' + sel +
+            ',"playhead":' + (s ? s.getPlayerPosition().seconds : 0) + ',"width":' + (w || 0) + ',"height":' + (h || 0) + ',"frame":' + (fr || 0) + '}';
     } catch (e) { return ahErr(e); }
 }
 
@@ -79,15 +80,15 @@ function ahFreeTrack(s, seconds, from) {
     }
     return -1;
 }
-function ahImport(filePath, insert) {
+function ahImport(filePath, insert, binName) {
     try {
         if (!app.project || !app.project.path) { return '{"error":"Open a project first."}'; }
-        var bin = ahBin('Arena Drops'), item = ahFindIn(bin, filePath);
+        var bin = ahBin(binName || 'Arena Drops'), item = ahFindIn(bin, filePath);
         if (!item) {
             if (!app.project.importFiles([filePath], true, bin, false)) { return '{"error":"Premiere could not import this file."}'; }
             item = ahFindIn(bin, filePath);
         }
-        if (!item) { return '{"error":"Imported, but the item was not found in Arena Drops."}'; }
+        if (!item) { return '{"error":"Imported, but the item was not found in the bin."}'; }
         var placed = '';
         if (insert) {
             var s = app.project.activeSequence;
@@ -139,40 +140,47 @@ function ahJson(o) {
     return String(o);
 }
 
-/* ---------- Motion: keyframe presets on the selected clips (bezier keys) ---------- */
+/* ---------- keyframes: at = seconds from clip start, or 'end' / 'end-0.4'. interp: 'linear' | 'hold' | default bezier ---------- */
+var AH_INTERP = { linear: 0, hold: 4, bezier: 5 };
+function ahKeys(c, keys, frame, compFor, miss) {
+    var tin = c.inPoint.seconds, tout = c.outPoint.seconds - frame, cleared = {};
+    for (var k = 0; k < keys.length; k++) {
+        var key = keys[k], pr = ahProp(compFor(key.comp), key.prop);
+        if (!pr) { miss[key.comp + ' ' + key.prop] = 1; continue; }
+        var at = key.at, t;
+        if (typeof at === 'number') { t = tin + at; }
+        else { var m = String(at).match(/^end(?:-([\d.]+))?$/); t = tout - (m && m[1] ? parseFloat(m[1]) : 0); }
+        if (t > tout) { t = tout; }
+        if (t < tin) { t = tin; }
+        var id = key.comp + '/' + key.prop;
+        try {
+            if (!cleared[id]) { try { pr.setTimeVarying(false); } catch (e1) {} pr.setTimeVarying(true); cleared[id] = 1; }
+            pr.addKey(t);
+            pr.setValueAtKey(t, key.v, true);
+            try { pr.setInterpolationTypeAtKey(t, AH_INTERP[key.interp || 'bezier'], true); } catch (e2) {}
+        } catch (e3) { miss[key.comp + ' ' + key.prop] = 1; }
+    }
+}
+function ahFrameSec(s) { var f = 1 / 30; try { f = s.getSettings().videoFrameRate.seconds || f; } catch (e) {} return f; }
+function ahMissList(miss) { var m2 = []; for (var x in miss) { if (miss.hasOwnProperty(x)) { m2.push('"' + ahEsc(x) + '"'); } } return '[' + m2.join(',') + ']'; }
+
+/* ---------- Motion: keyframe presets on the selected clips ---------- */
 function ahMotion(presetJson) {
     try {
         var s = app.project.activeSequence;
         if (!s) { return '{"error":"Open a sequence first."}'; }
         var preset = eval('(' + presetJson + ')'), sel = ahSelected(s);
         if (!sel.length) { return '{"error":"Select one or more clips in the timeline."}'; }
-        var frame = 1 / 30;
-        try { frame = s.getSettings().videoFrameRate.seconds || frame; } catch (e0) {}
-        var done = 0, miss = {};
+        var frame = ahFrameSec(s), miss = {};
         for (var i = 0; i < sel.length; i++) {
-            var c = sel[i].clip, tin = c.inPoint.seconds, tout = c.outPoint.seconds - frame, cleared = {};
-            for (var k = 0; k < preset.keys.length; k++) {
-                var key = preset.keys[k], pr = ahProp(ahComp(c, key.comp), key.prop);
-                if (!pr) { miss[key.comp + ' ' + key.prop] = 1; continue; }
-                var at = key.at, t;
-                if (typeof at === 'number') { t = tin + at; }
-                else { var m = String(at).match(/^end(?:-([\d.]+))?$/); t = tout - (m && m[1] ? parseFloat(m[1]) : 0); }
-                if (t > tout) { t = tout; }
-                if (t < tin) { t = tin; }
-                var id = key.comp + '/' + key.prop;
-                if (!cleared[id]) { try { pr.setTimeVarying(false); } catch (e1) {} pr.setTimeVarying(true); cleared[id] = 1; }
-                pr.addKey(t);
-                pr.setValueAtKey(t, key.v, true);
-                try { pr.setInterpolationTypeAtKey(t, 5, true); } catch (e2) {}
-            }
-            done++;
+            var c = sel[i].clip;
+            ahKeys(c, preset.keys, frame, function (name) { return ahComp(c, name); }, miss);
         }
-        var m2 = []; for (var x in miss) { if (miss.hasOwnProperty(x)) { m2.push('"' + ahEsc(x) + '"'); } }
-        return '{"ok":true,"clips":' + done + ',"missing":[' + m2.join(',') + ']}';
+        return '{"ok":true,"clips":' + sel.length + ',"missing":' + ahMissList(miss) + '}';
     } catch (e) { return ahErr(e); }
 }
 
-/* ---------- Effects: add an effect and set its values on the selected clips ---------- */
+/* ---------- Effects: one or more effects + values + optional keyframes, on the selected clips ---------- */
 function ahEffect(recipeJson) {
     try {
         var s = app.project.activeSequence;
@@ -180,23 +188,43 @@ function ahEffect(recipeJson) {
         var r = eval('(' + recipeJson + ')'), sel = ahSelected(s);
         if (!sel.length) { return '{"error":"Select one or more clips in the timeline."}'; }
         app.enableQE();
-        var fx = qe.project.getVideoEffectByName(r.effect);
-        if (!fx) { return '{"error":"Premiere has no effect called ' + ahEsc(r.effect) + '."}'; }
-        var done = 0, miss = {};
-        for (var i = 0; i < sel.length; i++) {
-            var it = ahQeItem(sel[i].track, sel[i].index);
+        var list = r.fx || [], frame = ahFrameSec(s), done = 0, miss = {}, i, f;
+        var qfx = [];
+        for (f = 0; f < list.length; f++) {
+            var q = qe.project.getVideoEffectByName(list[f].effect);
+            if (!q) { return '{"error":"This Premiere has no effect called ' + ahEsc(list[f].effect) + '."}'; }
+            qfx.push(q);
+        }
+        for (i = 0; i < sel.length; i++) {
+            var c = sel[i].clip, it = ahQeItem(sel[i].track, sel[i].index);
             if (!it) { continue; }
-            it.addVideoEffect(fx);
-            var comp = ahLastComp(sel[i].clip, r.effect);
-            for (var name in r.props) {
-                if (!r.props.hasOwnProperty(name)) { continue; }
-                var pr = ahProp(comp, name);
-                if (!pr) { miss[name] = 1; continue; }
-                try { pr.setValue(r.props[name], true); } catch (e1) { miss[name] = 1; }
+            for (f = 0; f < list.length; f++) {
+                it.addVideoEffect(qfx[f]);
+                var comp = ahLastComp(c, list[f].effect);
+                if (!comp) { miss[list[f].effect] = 1; continue; }
+                for (var name in list[f].props) {
+                    if (!list[f].props.hasOwnProperty(name)) { continue; }
+                    var pr = ahProp(comp, name);
+                    if (!pr) { miss[list[f].effect + ' ' + name] = 1; continue; }
+                    try { pr.setValue(list[f].props[name], true); } catch (e1) { miss[list[f].effect + ' ' + name] = 1; }
+                }
             }
+            if (r.keys && r.keys.length) { ahKeys(c, r.keys, frame, function (name) { return ahLastComp(c, name); }, miss); }
             done++;
         }
-        var m2 = []; for (var x in miss) { if (miss.hasOwnProperty(x)) { m2.push('"' + ahEsc(x) + '"'); } }
-        return '{"ok":true,"clips":' + done + ',"missing":[' + m2.join(',') + ']}';
+        return '{"ok":true,"clips":' + done + ',"missing":' + ahMissList(miss) + '}';
     } catch (e) { return ahErr(e); }
+}
+
+/* ---------- the frame under the playhead as PNG (previews) ---------- */
+function ahFrame(outBase) {
+    try {
+        var s = app.project.activeSequence;
+        if (!s) { return 'ERR:no sequence'; }
+        app.enableQE();
+        var q = qe.project.getActiveSequence();
+        if (typeof q.exportFramePNG === 'function') { q.exportFramePNG(q.CTI.timecode, outBase); return 'OK:png'; }
+        q.exportFrameJPEG(q.CTI.timecode, outBase);
+        return 'OK:jpg';
+    } catch (e) { return 'ERR:' + e.toString(); }
 }
