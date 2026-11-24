@@ -117,7 +117,8 @@ h1::before { width: 3px; height: 13px; border-radius: 1px; box-shadow: none; }
 .fxgrid .card { padding: 3px; gap: 3px; }
 .fxgrid .card .meta { padding: 0 3px; }
 .fv { position: absolute; inset: 0; overflow: hidden; background: #0b0c0e; }
-.fv .im, .fv .im2, .fv .im3 { position: absolute; inset: 0; background: var(--frame) center / cover no-repeat; }
+.fv .im, .fv .im2, .fv .im3 { position: absolute; inset: 0; background: var(--photo, var(--frame)) center 24% / cover no-repeat; }
+#fx.own .fv .im, #fx.own .fv .im2, #fx.own .fv .im3 { background-image: var(--frame); }
 .fv .ov { position: absolute; inset: 0; pointer-events: none; }
 .fv .im2, .fv .im3 { display: none; }
 
@@ -203,3 +204,19 @@ h1::before { width: 3px; height: 13px; border-radius: 1px; box-shadow: none; }
 .cline input:focus { border-color: var(--accent); background: var(--bg-sunk); outline: none; }
 .clines .empty { padding: 14px 9px; color: var(--text-3); font-size: 11px; }
 #tsrcline .props { margin-top: 6px; }
+
+/* Motion cards: a real photo instead of the silhouette */
+.mclip.photo { background: #20252d center 22% / cover no-repeat; }
+.mclip.photo::before, .mclip.photo::after { display: none; }
+
+/* Drop list: remove / delete */
+.item .acts { gap: 4px; flex-wrap: nowrap; }
+.item button.x { width: 22px; padding: 0; color: var(--text-3); }
+.item button.x:hover { color: #ff6b6b; border-color: rgba(255, 107, 107, .5); }
+.item .ask { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0 2px; font-size: 11px; color: var(--text-2); }
+.item .ask[hidden] { display: none; }
+.item .ask span { margin-right: auto; }
+.item button.danger { color: #fff; background: #b8323a; border-color: #b8323a; }
+.item button.danger:hover { background: #d03a43; }
+.item.asking { background: rgba(184, 50, 58, .08); }
+#dropclear { margin-left: 8px; font-size: 11px; }

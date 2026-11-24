@@ -47,7 +47,7 @@
     </div>
   </section>
   <section class="grow">
-    <div class="cap"><span>Recent drops</span><span class="end" id="dropcount"></span></div>
+    <div class="cap"><span>Recent drops</span><span class="end"><span id="dropcount"></span><button class="link" id="dropclear" hidden>Clear</button></span></div>
     <div class="list" id="drops"></div>
   </section>
   <footer>
@@ -144,7 +144,7 @@
 <main class="tab" id="tab-effects" hidden>
   <section>
     <div class="seg" id="fxgroup"><button data-v="Trending" class="on">Trending</button><button data-v="In / Out">In / Out</button><button data-v="Looks">Looks</button><button data-v="Arena">Arena</button></div>
-    <div class="row spread fxbar"><span class="muted" id="fxframe">Preview on a sample frame</span><button id="fxgrab" class="ghost">Grab playhead frame</button></div>
+    <div class="row spread fxbar"><span class="muted" id="fxframe">Preview on Anik photos</span><div class="row"><button id="fxphotos" class="ghost" hidden>Photos</button><button id="fxgrab" class="ghost">Grab playhead frame</button></div></div>
   </section>
   <section class="grow">
     <div class="grid fxgrid" id="fx"></div>

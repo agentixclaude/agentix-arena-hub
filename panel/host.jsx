@@ -468,3 +468,19 @@ function ahCapStyle(track, a, b, pct, base, off) {
         return '{"done":' + done + ',"miss":' + miss + ',"selection":' + usedSel + '}';
     } catch (e) { return ahErr(e); }
 }
+
+/* ---------- Drop: delete a dropped file's items from the project (the panel deletes the file on disk) ----------
+   ExtendScript has no "delete project item": move every item using this file into a temp bin, then delete that bin.
+   Clips of it in sequences go with it. */
+function ahDeleteMedia(filePath) {
+    try {
+        if (!app.project || !app.project.path) { return '{"removed":0}'; }
+        var want = String(filePath).toLowerCase(), hits = [];
+        ahWalk(app.project.rootItem, function (c) { var mp = ''; try { mp = String(c.getMediaPath()).toLowerCase(); } catch (e) {} if (mp === want) { hits.push(c); } return false; });
+        if (!hits.length) { return '{"removed":0}'; }
+        var tmp = app.project.rootItem.createBin('__arena_delete');
+        for (var i = 0; i < hits.length; i++) { hits[i].moveBin(tmp); }
+        tmp.deleteBin();
+        return '{"removed":' + hits.length + '}';
+    } catch (e) { return ahErr(e); }
+}

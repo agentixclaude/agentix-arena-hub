@@ -1,1 +1,1 @@
-{ "version": "0.5.0", "notes": "Text tab is now editable captions: SRT / caption track / typed line, one line per caption, placed as Graphics text clips or a native caption track. Size and Position change them all. No more .mov renders." }
+{ "version": "0.5.1", "notes": "Editable captions in Text (no .mov renders). All previews use bundled Anik photos, so they work offline. Drop: Clear list, and ✕ on each drop to remove it from the list or delete the file + project item." }

@@ -56,7 +56,6 @@
     Array.prototype.forEach.call(document.querySelectorAll('main.tab'), function (m) { m.hidden = m.id !== 'tab-' + name; });
     if (!tabsSeen[name]) { tabsSeen[name] = true; if (name === 'templates') scanTemplates(); if (name === 'motion') renderMotion(); if (name === 'text') renderText(); if (name === 'effects') renderFx(); if (name === 'tools') renderTools(); }
     if (name === 'tools' && tabsSeen.tools) rangeInfo();
-    if (name === 'effects' && (!frame.url || /^data:/.test(frame.url))) grabFrame(true);
     store('ah:tab', name);
     refresh();
   }
@@ -91,16 +90,40 @@
   function renderDrops() {
     var box = $('drops');
     $('dropcount').textContent = drops.length ? drops.length : '';
+    $('dropclear').hidden = !drops.length;
     if (!drops.length) { box.innerHTML = '<div class="empty">Nothing dropped yet.<br>Copy an image, a file or a link anywhere, then press Paste.</div>'; return; }
     box.innerHTML = drops.map(function (d, i) {
       var th = IMG_EXT.test(d.path) && fs.existsSync(d.path) ? ' style="background-image:url(\'' + fileUrl(d.path) + '\')"' : '';
-      return '<div class="item"><div class="th"' + th + '></div><div><div class="n" title="' + esc(d.path) + '">' + esc(path.basename(d.path)) + '</div><div class="s">' + esc(d.src) + '</div></div>' +
-        '<button data-i="' + i + '">Place</button></div>';
+      return '<div class="item" data-i="' + i + '"><div class="th"' + th + '></div><div><div class="n" title="' + esc(d.path) + '">' + esc(path.basename(d.path)) + '</div><div class="s">' + esc(d.src) + '</div></div>' +
+        '<div class="row acts"><button data-a="place">Place</button><button class="x" data-a="x" title="Remove or delete">✕</button></div>' +
+        '<div class="ask" hidden><span>Delete this drop?</span><button data-a="list">Remove from list</button><button class="danger" data-a="kill">Delete file + from project</button><button class="link" data-a="no">Cancel</button></div></div>';
     }).join('');
-    Array.prototype.forEach.call(box.querySelectorAll('button'), function (b) {
-      b.addEventListener('click', function () { var d = drops[+b.getAttribute('data-i')]; if (d && fs.existsSync(d.path)) bring(d.path, d.src, true); else setStatus('dropstatus', 'That file was moved or deleted.', 'warn'); });
+    Array.prototype.forEach.call(box.querySelectorAll('.item'), function (it) {
+      var i = +it.getAttribute('data-i'), d = drops[i];
+      it.addEventListener('click', function (e) {
+        var a = e.target.getAttribute && e.target.getAttribute('data-a'); if (!a) return;
+        if (a === 'place') { if (d && fs.existsSync(d.path)) bring(d.path, d.src, true); else setStatus('dropstatus', 'That file was moved or deleted.', 'warn'); }
+        if (a === 'x' || a === 'no') { it.classList.toggle('asking', a === 'x'); it.querySelector('.ask').hidden = a !== 'x'; }
+        if (a === 'list') { dropForget(d.path); setStatus('dropstatus', path.basename(d.path) + ' removed from the list. The file and project item stay.', 'ok'); }
+        if (a === 'kill') dropDelete(d);
+      });
     });
   }
+  function dropForget(p) { drops = drops.filter(function (x) { return x.path !== p; }); store('ah:drops', drops); renderDrops(); }
+  async function dropDelete(d) {
+    if (busy) return;
+    busy = true;
+    try {
+      var r = await jsx('ahDeleteMedia(' + q(d.path) + ')');
+      if (r.error) throw new Error('Project: ' + r.error);
+      var gone = false; try { if (fs.existsSync(d.path)) { fs.unlinkSync(d.path); } gone = true; } catch (e) { throw new Error('Could not delete the file: ' + e.message); }
+      dropForget(d.path);
+      setStatus('dropstatus', path.basename(d.path) + ' deleted from disk' + (r.removed ? ' and from the project (' + r.removed + ' item' + (r.removed > 1 ? 's' : '') + ', clips of it in sequences too)' : '') + '. Undo can bring the project item back, not the file.', 'ok');
+    } catch (e) { setStatus('dropstatus', e.message, 'bad'); }
+    busy = false;
+  }
+  $('dropclear').addEventListener('click', function () { var n = drops.length; drops = []; store('ah:drops', drops); renderDrops(); setStatus('dropstatus', n + ' drops cleared from the list. Files and project items are kept.', 'ok'); });
+
   function remember(p, src) {
     drops = drops.filter(function (d) { return d.path !== p; });
     drops.unshift({ path: p, src: src });
@@ -404,8 +427,8 @@
   function renderMotion() {
     var box = $('motions');
     var list = motion.list.filter(function (m) { return motion.tag === 'all' || m.tag === motion.tag; });
-    box.innerHTML = list.map(function (m) {
-      return '<div class="card m-' + esc(m.id) + (motion.sel === m ? ' on' : '') + '" data-id="' + esc(m.id) + '"><div class="pv"><div class="mframe"><div class="mclip"></div></div></div>' +
+    box.innerHTML = list.map(function (m, i) {
+      return '<div class="card m-' + esc(m.id) + (motion.sel === m ? ' on' : '') + '" data-id="' + esc(m.id) + '"><div class="pv"><div class="mframe"><div class="mclip photo" style="background-image:url(&quot;' + photo(i + 3) + '&quot;)"></div></div></div>' +
         '<div class="meta"><span class="n">' + esc(m.name) + '</span><span class="t">' + esc(m.tag) + '</span></div><div class="d">' + esc(m.desc) + '</div></div>';
     }).join('');
     Array.prototype.forEach.call(box.querySelectorAll('.card'), function (card) {
@@ -441,20 +464,24 @@
   function frameWH() { return info.width && info.height ? [info.width, info.height] : [1080, 1920]; }
   function fmtT(s) { var m = Math.floor(s / 60), r = Math.floor(s - m * 60); return m + ':' + (r < 10 ? '0' : '') + r; }
 
+  // ================= PREVIEW PHOTOS (shipped in the panel: work offline, no Premiere needed) =================
+  var PHOTOS = (function () { try { return fs.readdirSync(path.join(EXT_DIR, 'assets', 'preview')).filter(function (n) { return /\.(jpe?g|png|webp)$/i.test(n); }).sort(); } catch (e) { return []; } })()
+    .map(function (n) { return fileUrl(path.join(EXT_DIR, 'assets', 'preview', n)); });
+  function photo(i) { return PHOTOS.length ? PHOTOS[((i % PHOTOS.length) + PHOTOS.length) % PHOTOS.length] : ''; }
+  var photoImg = new Image(); photoImg.onload = function () { if (tabsSeen.tools) previewMatte(); }; if (PHOTOS.length) photoImg.src = photo(8);
+
   // ================= FRAME (Effects preview) =================
+  // Default: every card shows its own photo. "Grab playhead frame" puts your footage on all of them; "Photos" goes back.
   var frame = { url: null, img: null };
-  function sampleFrame() {
-    var c = document.createElement('canvas'); c.width = 640; c.height = 360; var x = c.getContext('2d');
-    x.fillStyle = '#2b3442'; x.fillRect(0, 0, 640, 360); x.fillStyle = '#3d4a5e'; x.fillRect(0, 230, 640, 130);
-    x.fillStyle = '#d9a37c'; x.beginPath(); x.arc(320, 150, 52, 0, 7); x.fill();
-    x.fillStyle = '#1d2430'; x.beginPath(); x.ellipse(320, 340, 120, 120, 0, Math.PI, 0); x.fill();
-    x.fillStyle = 'rgba(255,214,150,.9)'; x.beginPath(); x.arc(520, 70, 14, 0, 7); x.fill();
-    return c.toDataURL('image/png');
-  }
   function setFrame(url) {
     frame.url = url;
     var img = new Image(); img.onload = function () { frame.img = img; }; img.src = url;
     $('fx').style.setProperty('--frame', 'url("' + url + '")');
+    $('fx').classList.add('own'); $('fxphotos').hidden = false;
+  }
+  function usePhotos() {
+    frame.url = null; frame.img = null; $('fx').classList.remove('own'); $('fxphotos').hidden = true;
+    $('fxframe').textContent = 'Preview on Anik photos';
   }
   async function grabFrame(silent) {
     await refresh();
@@ -469,6 +496,7 @@
     return true;
   }
   $('fxgrab').addEventListener('click', function () { grabFrame(false); });
+  $('fxphotos').addEventListener('click', usePhotos);
 
   // ================= TEXT =================
   // Editable captions only, nothing rendered. Lines come from an SRT / VTT, the sequence's caption track, or a typed line,
@@ -728,11 +756,10 @@
   // ================= EFFECTS =================
   var fx = { list: readJson('catalog/effects.json').recipes || [], group: 'Trending', sel: null };
   function renderFx() {
-    if (!frame.url) setFrame(sampleFrame());
     var list = fx.list.filter(function (r) { return r.group === fx.group; });
-    $('fx').innerHTML = list.map(function (r) {
+    $('fx').innerHTML = list.map(function (r, i) {
       var uses = (r.fx || []).map(function (f) { return f.effect; }).concat(r.keys && r.keys.length ? ['keyframes'] : []).join(' + ');
-      return '<div class="card pv-' + esc(r.pv) + (fx.sel === r ? ' on' : '') + '" data-id="' + esc(r.id) + '" title="' + esc(r.desc + '\n' + uses) + '">' +
+      return '<div class="card pv-' + esc(r.pv) + (fx.sel === r ? ' on' : '') + '" data-id="' + esc(r.id) + '" title="' + esc(r.desc + '\n' + uses) + '" style="--photo:url(&quot;' + photo(i) + '&quot;)">' +
         '<div class="pv"><div class="fv"><div class="im"></div><div class="im2"></div><div class="im3"></div><div class="ov"></div><div class="ov ov2"></div></div></div>' +
         '<div class="meta"><span class="n">' + esc(r.name) + '</span></div></div>';
     }).join('');
@@ -817,14 +844,25 @@
     }).join('');
     Array.prototype.forEach.call(box.querySelectorAll('input'), function (el) {
       var d = MPROPS[tools.mtype][+el.getAttribute('data-i')];
-      el.addEventListener('input', function () { m[d[0]] = d[2] === 'range' ? +el.value : el.value; if (d[2] === 'range') el.nextSibling.textContent = el.value + '%'; store('ah:mprops', m); drawMatte($('mprev'), 160, 160 * frameWH()[1] / frameWH()[0]); });
+      el.addEventListener('input', function () { m[d[0]] = d[2] === 'range' ? +el.value : el.value; if (d[2] === 'range') el.nextSibling.textContent = el.value + '%'; store('ah:mprops', m); previewMatte(); });
     });
     Array.prototype.forEach.call(box.querySelectorAll('.seg'), function (sg) {
       var d = MPROPS[tools.mtype][+sg.getAttribute('data-i')];
       Array.prototype.forEach.call(sg.querySelectorAll('button'), function (b) { b.addEventListener('click', function () { m[d[0]] = b.getAttribute('data-v'); store('ah:mprops', m); renderMatteProps(); }); });
     });
-    var wh = frameWH(), pv = $('mprev'); pv.width = 160; pv.height = Math.round(160 * wh[1] / wh[0]);
-    drawMatte(pv, pv.width, pv.height);
+    previewMatte();
+  }
+  // preview only: the matte over a photo. The exported matte (drawMatte) stays clean.
+  function previewMatte() {
+    var wh = frameWH(), pv = $('mprev'), W = 160, H = Math.round(160 * wh[1] / wh[0]);
+    var off = document.createElement('canvas'); drawMatte(off, W, H);
+    pv.width = W; pv.height = H; var x = pv.getContext('2d');
+    x.fillStyle = '#0b0c0e'; x.fillRect(0, 0, W, H);
+    if (photoImg.complete && photoImg.naturalWidth) {
+      var iw = photoImg.naturalWidth, ih = photoImg.naturalHeight, k = Math.max(W / iw, H / ih);
+      x.drawImage(photoImg, (W - iw * k) / 2, (H - ih * k) / 2, iw * k, ih * k);
+    }
+    x.drawImage(off, 0, 0);
   }
   function drawMatte(cv, W, H) {
     var x = cv.getContext('2d'), m = tools.m, t = tools.mtype;
