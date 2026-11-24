@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: UAI Luma Cut, Smart Export or the Premiere MCP
+    url: https://github.com/agentixclaude/uai-premiere-panels/issues/new/choose
+    about: Those live in the team panels repo.
