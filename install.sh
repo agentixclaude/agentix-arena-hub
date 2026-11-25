@@ -7,7 +7,7 @@ curl -fsSL https://codeload.github.com/agentixclaude/agentix-arena-hub/zip/refs/
 unzip -q "$TMP/a.zip" -d "$TMP"
 mkdir -p "$DEST"
 cp -R "$TMP"/agentix-arena-hub-main/panel/. "$DEST/"
-for v in 9 10 11 12 13; do defaults write com.adobe.CSXS.$v PlayerDebugMode 1; done
+for v in 9 10 11 12 13 14 15 16; do defaults write com.adobe.CSXS.$v PlayerDebugMode 1; done
 rm -rf "$TMP"
 # tools for Drop (links) and Auto captions — skipped quietly when Homebrew is missing
 BREW="$(command -v brew || ls /opt/homebrew/bin/brew /usr/local/bin/brew 2>/dev/null | head -1 || true)"
